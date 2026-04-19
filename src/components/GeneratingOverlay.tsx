@@ -8,19 +8,15 @@ const LINES = [
   '冷静一下，开始反击…',
 ]
 
-export default function GeneratingOverlay({ onDone }: { onDone: () => void }) {
+export default function GeneratingOverlay() {
   const [line, setLine] = useState(LINES[0])
 
   useEffect(() => {
     const id = setInterval(() => {
       setLine(LINES[Math.floor(Math.random() * LINES.length)])
     }, 650)
-    const timer = setTimeout(onDone, 1700)
-    return () => {
-      clearInterval(id)
-      clearTimeout(timer)
-    }
-  }, [onDone])
+    return () => clearInterval(id)
+  }, [])
 
   return (
     <div className="absolute inset-0 z-40 bg-bg/85 backdrop-blur-md grid place-items-center animate-pop">

@@ -1,9 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Back, Bolt, Copy, Refresh, Share } from '../components/Icons'
 import ChatBubble from '../components/ChatBubble'
-
-type StyleKey = 'savage' | 'logic' | 'sarcasm' | 'calm'
+import { generateReply, type Relation, type Reply, type StyleKey } from '../lib/api'
 
 const STYLES: { key: StyleKey; label: string; icon: string }[] = [
   { key: 'savage', label: '爽文反击', icon: '⚡' },
@@ -12,56 +11,106 @@ const STYLES: { key: StyleKey; label: string; icon: string }[] = [
   { key: 'calm', label: '冷静终结', icon: '🧊' },
 ]
 
-const DIALOGS: Record<
-  StyleKey,
-  { me: string; them: string[]; replies: string[] }
-> = {
+const FALLBACK: Record<StyleKey, Reply> = {
   savage: {
     me: '你不回我消息，是手断了还是网断了？\n两样都没断，那就是心断了。',
-    them: ['别说得这么难听。', '我错了还不行吗？'],
-    replies: ['难听的不是我的话，是你的行为。', '认错容易，改才难。'],
+    dialog: [
+      { them: '别说得这么难听。', me: '难听的不是我的话，是你的行为。' },
+      { them: '我错了还不行吗？', me: '认错容易，改才难。' },
+    ],
   },
   logic: {
     me: '敷衍？是你先把我当背景板的。\n我一直在回应，你却在习惯性忽视。\n如果不在乎，就别来要求我理解。',
-    them: ['你怎么突然这么敏感？', '那你想怎么样？'],
-    replies: [
-      '敏感？你迟到三次我都没说什么，\n这次只是想让你意识到我的感受。',
-      '从现在开始，尊重是基本的。',
+    dialog: [
+      {
+        them: '你怎么突然这么敏感？',
+        me: '敏感？你迟到三次我都没说什么，\n这次只是想让你意识到我的感受。',
+      },
+      { them: '那你想怎么样？', me: '从现在开始，尊重是基本的。' },
     ],
   },
   sarcasm: {
     me: '哦~原来你在乎啊？\n我还以为空气比我更重要呢。',
-    them: ['别这么阴阳好吗？', '我只是最近有点忙。'],
-    replies: [
-      '忙到回消息需要三天？\n那我下次用飞鸽传书好了。',
-      '忙不是借口，是选择。',
+    dialog: [
+      { them: '别这么阴阳好吗？', me: '忙到回消息需要三天？\n那我下次用飞鸽传书好了。' },
+      { them: '我只是最近有点忙。', me: '忙不是借口，是选择。' },
     ],
   },
   calm: {
     me: '我理解你最近忙，但忽视是有代价的。\n我们可以聊聊怎么改善。',
-    them: ['好，我们谈谈。'],
-    replies: ['谢谢。先听你说。'],
+    dialog: [{ them: '好，我们谈谈。', me: '谢谢。先听你说。' }],
   },
+}
+
+type LocState = {
+  text?: string
+  rel?: Relation
+  reply?: Reply
+  error?: boolean
 }
 
 export default function ResultsPage() {
   const nav = useNavigate()
-  const { state } = useLocation() as { state?: { text?: string } }
-  const [style, setStyle] = useState<StyleKey>('savage')
-  const [copied, setCopied] = useState(false)
+  const { state } = useLocation() as { state?: LocState }
   const themMsg = state?.text?.trim() || '你最近怎么这么敷衍我？'
+  const relation: Relation = state?.rel ?? 'couple'
 
-  const dialog = useMemo(() => DIALOGS[style], [style])
+  const [style, setStyle] = useState<StyleKey>('savage')
+  const cacheRef = useRef<Partial<Record<StyleKey, Reply>>>({
+    savage: state?.reply,
+  })
+  const [reply, setReply] = useState<Reply>(state?.reply ?? FALLBACK.savage)
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [usedFallback, setUsedFallback] = useState(!!state?.error)
+
+  const fetchStyle = async (target: StyleKey, force = false) => {
+    if (!force && cacheRef.current[target]) {
+      setReply(cacheRef.current[target]!)
+      return
+    }
+    if (usedFallback && !force) {
+      setReply(FALLBACK[target])
+      return
+    }
+    setLoading(true)
+    try {
+      const r = await generateReply({
+        text: themMsg,
+        relation,
+        style: target,
+      })
+      cacheRef.current[target] = r
+      setReply(r)
+      setUsedFallback(false)
+    } catch (err) {
+      console.warn('style fetch failed, using fallback', err)
+      setUsedFallback(true)
+      setReply(FALLBACK[target])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchStyle(style)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [style])
 
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(dialog.me)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1200)
+      await navigator.clipboard.writeText(reply.me)
     } catch {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1200)
+      /* noop */
     }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1200)
+  }
+
+  const onRegenerate = () => {
+    delete cacheRef.current[style]
+    setUsedFallback(false)
+    fetchStyle(style, true)
   }
 
   return (
@@ -78,7 +127,9 @@ export default function ResultsPage() {
         <h1 className="font-heavy font-black text-[17px]">吵架结果</h1>
         <button
           onClick={() =>
-            nav('/share', { state: { style, them: themMsg, me: dialog.me } })
+            nav('/share', {
+              state: { style, them: themMsg, me: reply.me, dialog: reply.dialog },
+            })
           }
           className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10 active:scale-95"
         >
@@ -94,6 +145,7 @@ export default function ResultsPage() {
             return (
               <button
                 key={s.key}
+                disabled={loading && !on}
                 onClick={() => setStyle(s.key)}
                 className={`h-9 px-3.5 rounded-full border text-[13px] flex items-center gap-1 transition-all ${
                   on
@@ -107,10 +159,18 @@ export default function ResultsPage() {
             )
           })}
         </div>
+        {usedFallback && (
+          <p className="mt-2 text-[11px] text-amber-300/80">
+            模型暂不可用，正在使用本地兜底文案。点「再来一句」可重试。
+          </p>
+        )}
       </div>
 
-      {/* Conversation — key 强制每次换风格都重播卡片爆出动画 */}
-      <section key={style} className="relative px-4 mt-3 space-y-3">
+      {/* Conversation — key 强制每次换风格/重新生成都重播卡片爆出动画 */}
+      <section
+        key={`${style}-${loading ? 'l' : reply.me.slice(0, 6)}`}
+        className="relative px-4 mt-3 space-y-3"
+      >
         <div style={{ animationDelay: '40ms' }} className="animate-cardBoom">
           <ChatBubble side="left" label="对方">
             {themMsg}
@@ -125,7 +185,11 @@ export default function ResultsPage() {
           <div className="relative rounded-2xl p-[2px] bg-cta-gradient shadow-glow">
             <div className="rounded-2xl bg-card/90 px-3 py-2">
               <ChatBubble side="right" tone="primary" label="你（反击）">
-                <div className="whitespace-pre-line">{dialog.me}</div>
+                {loading ? (
+                  <TypingDots />
+                ) : (
+                  <div className="whitespace-pre-line">{reply.me}</div>
+                )}
               </ChatBubble>
             </div>
           </div>
@@ -140,22 +204,21 @@ export default function ResultsPage() {
           <span className="h-px flex-1 bg-white/10" />
         </div>
 
-        {dialog.them.map((t, i) => (
-          <div
-            key={i}
-            style={{ animationDelay: `${260 + i * 180}ms` }}
-            className="space-y-3 animate-cardBoom"
-          >
-            <ChatBubble side="left" label="对方">
-              {t}
-            </ChatBubble>
-            {dialog.replies[i] && (
-              <ChatBubble side="right" tone="primary">
-                <div className="whitespace-pre-line">{dialog.replies[i]}</div>
+        {!loading &&
+          reply.dialog.map((turn, i) => (
+            <div
+              key={i}
+              style={{ animationDelay: `${260 + i * 180}ms` }}
+              className="space-y-3 animate-cardBoom"
+            >
+              <ChatBubble side="left" label="对方">
+                {turn.them}
               </ChatBubble>
-            )}
-          </div>
-        ))}
+              <ChatBubble side="right" tone="primary">
+                <div className="whitespace-pre-line">{turn.me}</div>
+              </ChatBubble>
+            </div>
+          ))}
       </section>
 
       {/* Bottom actions */}
@@ -163,24 +226,29 @@ export default function ResultsPage() {
         <div className="rounded-2xl bg-card/85 backdrop-blur border border-white/5 p-3 flex items-center gap-2 shadow-card">
           <button
             onClick={onCopy}
-            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95"
+            disabled={loading}
+            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
           >
             <Copy className="w-4 h-4" />
             {copied ? '已复制' : '复制'}
           </button>
           <button
-            onClick={() => setStyle((s) => s)}
-            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95"
+            onClick={onRegenerate}
+            disabled={loading}
+            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
             title="再来一句"
           >
-            <Refresh className="w-4 h-4" />
-            再来一句
+            <Refresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? '生成中…' : '再来一句'}
           </button>
           <button
             onClick={() =>
-              nav('/share', { state: { style, them: themMsg, me: dialog.me } })
+              nav('/share', {
+                state: { style, them: themMsg, me: reply.me, dialog: reply.dialog },
+              })
             }
-            className="flex-1 h-12 rounded-xl bg-cta-gradient text-white font-heavy font-black flex items-center justify-center gap-1.5 shadow-glow active:scale-[0.98]"
+            disabled={loading}
+            className="flex-1 h-12 rounded-xl bg-cta-gradient text-white font-heavy font-black flex items-center justify-center gap-1.5 shadow-glow active:scale-[0.98] disabled:opacity-60"
           >
             <Bolt className="w-5 h-5" />
             生成截图
@@ -188,5 +256,24 @@ export default function ResultsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+function TypingDots() {
+  return (
+    <span className="inline-flex gap-1 py-1.5">
+      <span
+        className="inline-block w-2 h-2 rounded-full bg-white/70 animate-float"
+        style={{ animationDuration: '700ms' }}
+      />
+      <span
+        className="inline-block w-2 h-2 rounded-full bg-white/70 animate-float"
+        style={{ animationDelay: '120ms', animationDuration: '700ms' }}
+      />
+      <span
+        className="inline-block w-2 h-2 rounded-full bg-white/70 animate-float"
+        style={{ animationDelay: '240ms', animationDuration: '700ms' }}
+      />
+    </span>
   )
 }

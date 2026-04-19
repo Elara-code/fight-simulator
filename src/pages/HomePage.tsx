@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
+import { generateReply } from '../lib/api'
 
 const RELATIONS = [
   { key: 'couple', label: '情侣', emoji: '💖' },
@@ -19,17 +20,30 @@ export default function HomePage() {
   const [generating, setGenerating] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
 
-  const canSubmit = text.trim().length > 0
+  const canSubmit = text.trim().length > 0 && !generating
 
-  const onSubmit = () => {
+  const onSubmit = async () => {
     if (!canSubmit) return
     setFiring(true)
-    // 按钮缩→弹 + 闪电划过
     btnRef.current?.classList.add('animate-pressBounce')
     setTimeout(() => btnRef.current?.classList.remove('animate-pressBounce'), 360)
     setTimeout(() => setFiring(false), 520)
-    // 进入「生成中」
-    setTimeout(() => setGenerating(true), 220)
+    setGenerating(true)
+
+    const trimmed = text.trim()
+    try {
+      const reply = await generateReply({
+        text: trimmed,
+        relation: rel,
+        style: 'savage',
+      })
+      nav('/result', { state: { text: trimmed, rel, reply } })
+    } catch (err) {
+      console.warn('generate failed, falling back', err)
+      nav('/result', { state: { text: trimmed, rel, error: true } })
+    } finally {
+      setGenerating(false)
+    }
   }
 
   return (
@@ -135,9 +149,7 @@ export default function HomePage() {
         </p>
       </section>
 
-      {generating && (
-        <GeneratingOverlay onDone={() => nav('/result', { state: { text, rel } })} />
-      )}
+      {generating && <GeneratingOverlay />}
     </div>
   )
 }

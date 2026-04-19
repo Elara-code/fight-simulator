@@ -12,19 +12,33 @@ const STICKERS = [
 
 type Line = { side: 'left' | 'right'; text: string }
 
+type ShareState = {
+  them?: string
+  me?: string
+  dialog?: { them: string; me: string }[]
+}
+
 export default function SharePage() {
   const nav = useNavigate()
-  const { state } = useLocation() as { state?: { them?: string; me?: string } }
+  const { state } = useLocation() as { state?: ShareState }
   const them = state?.them || '你最近怎么这么敷衍我？'
   const me =
     state?.me ||
     '敷衍？是你先把我当背景板的。\n我一直在回应，你却在习惯性忽视。\n如果不在乎，就别来要求我理解。'
+  const followUps = state?.dialog ?? [
+    {
+      them: '你怎么突然这么敏感？',
+      me: '敏感？你迟到三次我都没说什么，\n这次只是想让你意识到我的感受。',
+    },
+  ]
 
   const lines: Line[] = [
     { side: 'left', text: them },
     { side: 'right', text: me },
-    { side: 'left', text: '你怎么突然这么敏感？' },
-    { side: 'right', text: '敏感？你迟到三次我都没说什么，\n这次只是想让你意识到我的感受。' },
+    ...followUps.flatMap<Line>((t) => [
+      { side: 'left', text: t.them },
+      { side: 'right', text: t.me },
+    ]),
   ]
 
   const [shown, setShown] = useState(0)
