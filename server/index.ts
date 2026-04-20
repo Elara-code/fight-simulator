@@ -1,19 +1,31 @@
 import 'dotenv/config'
+import * as Sentry from '@sentry/node'
+
+if (process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: 0.1,
+  })
+}
+
 import express, { type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 import OpenAI from 'openai'
 import { ZodError } from 'zod'
 import { GenerateRequest, generateReply } from './generate.js'
+import { log } from './logger.js'
+import { screenUserInput } from './safety.js'
 
 const app = express()
 
 app.set('trust proxy', 1)
 
 const DEFAULT_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173']
-const allowedOrigins = (process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
-  : DEFAULT_ORIGINS)
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : DEFAULT_ORIGINS
 
 app.use(
   cors({
@@ -32,9 +44,13 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const ms = Date.now() - t0
     const ip = req.ip || req.socket.remoteAddress || '-'
-    console.log(
-      `[req] ${req.method} ${req.path} ${res.statusCode} ${ms}ms ip=${ip}`,
-    )
+    log.info('request', {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      ms,
+      ip,
+    })
   })
   next()
 })
@@ -89,49 +105,55 @@ app.get('/api/health', (_req, res) => {
   })
 })
 
-app.post(
-  '/api/generate',
-  perIpLimiter,
-  dailyCapGuard,
-  async (req, res) => {
-    const parsed = GenerateRequest.safeParse(req.body)
-    if (!parsed.success) {
-      return res
-        .status(400)
-        .json({ error: 'bad_request', issues: parsed.error.issues })
-    }
+app.post('/api/generate', perIpLimiter, dailyCapGuard, async (req, res) => {
+  const parsed = GenerateRequest.safeParse(req.body)
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'bad_request', issues: parsed.error.issues })
+  }
 
-    try {
-      const reply = await generateReply(parsed.data)
-      dailyCount += 1
-      res.json(reply)
-    } catch (err) {
-      if (err instanceof ZodError) {
-        console.error('[generate] schema mismatch from model:', err.issues)
-        return res.status(502).json({ error: 'bad_model_output' })
-      }
-      if (
-        err instanceof Error &&
-        (err as Error & { code?: string }).code === 'NO_API_KEY'
-      ) {
-        return res.status(503).json({ error: 'no_api_key' })
-      }
-      if (err instanceof OpenAI.APIError) {
-        console.error('[generate] openai error:', err.status, err.message)
-        return res
-          .status(err.status ?? 502)
-          .json({ error: 'upstream_error', message: err.message })
-      }
-      console.error('[generate] unknown error:', err)
-      res.status(500).json({ error: 'internal' })
+  const safety = screenUserInput(parsed.data.text)
+  if (!safety.ok) {
+    log.warn('safety_blocked', { code: safety.code })
+    return res.status(400).json({ error: safety.code, message: safety.reason })
+  }
+
+  try {
+    const reply = await generateReply(parsed.data)
+    dailyCount += 1
+    res.json(reply)
+  } catch (err) {
+    if (err instanceof ZodError) {
+      log.error('schema_mismatch', { issues: err.issues })
+      return res.status(502).json({ error: 'bad_model_output' })
     }
-  },
-)
+    if (
+      err instanceof Error &&
+      (err as Error & { code?: string }).code === 'NO_API_KEY'
+    ) {
+      return res.status(503).json({ error: 'no_api_key' })
+    }
+    if (err instanceof OpenAI.APIError) {
+      log.error('openai_error', { status: err.status, message: err.message })
+      Sentry.captureException(err)
+      return res
+        .status(err.status ?? 502)
+        .json({ error: 'upstream_error', message: err.message })
+    }
+    log.error('internal_error', { err: err instanceof Error ? err.message : String(err) })
+    Sentry.captureException(err)
+    res.status(500).json({ error: 'internal' })
+  }
+})
 
 const port = Number(process.env.PORT) || 8787
 app.listen(port, () => {
-  const hasKey = !!process.env.DEEPSEEK_API_KEY
-  console.log(
-    `[fight-sim] api listening on :${port}  (DEEPSEEK_API_KEY=${hasKey ? 'set' : 'MISSING'}, dailyCap=${dailyCap}, cors=${allowedOrigins.join(',')})`,
-  )
+  log.info('api_listening', {
+    port,
+    hasKey: !!process.env.DEEPSEEK_API_KEY,
+    dailyCap,
+    cors: allowedOrigins,
+    sentry: !!process.env.SENTRY_DSN,
+  })
 })

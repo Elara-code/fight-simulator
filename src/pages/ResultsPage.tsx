@@ -208,6 +208,7 @@ export default function ResultsPage() {
       <header className="relative flex items-center justify-between px-4 pt-12 pb-3">
         <button
           onClick={() => nav(-1)}
+          aria-label="返回"
           className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10 active:scale-95"
         >
           <Back className="w-5 h-5" />
@@ -219,6 +220,7 @@ export default function ResultsPage() {
               state: { style, them: themMsg, me: reply.me, dialog: reply.dialog },
             })
           }
+          aria-label="生成截图分享"
           className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10 active:scale-95"
         >
           <Share className="w-4 h-4" />

@@ -76,6 +76,10 @@ function mapCodeToMessage(code: string, status: number): string {
       return '模型服务暂不可用'
     case 'bad_request':
       return '输入不合法，请检查后重试'
+    case 'spam':
+      return '输入看起来是无意义重复，请好好说话'
+    case 'hard_block':
+      return '这条内容我们没法帮你生成，换一句试试'
     default:
       return status >= 500 ? '服务临时抽风，请重试' : '请求失败，请重试'
   }
