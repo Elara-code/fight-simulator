@@ -25,7 +25,7 @@ export default function BottomNav() {
           >
             <Plus className="w-6 h-6" />
           </button>
-          <NavLink to="/share" className={({ isActive }) => `${tab} ${isActive ? active : ''}`}>
+          <NavLink to="/history" className={({ isActive }) => `${tab} ${isActive ? active : ''}`}>
             <History className="w-5 h-5" />
             <span>历史</span>
           </NavLink>

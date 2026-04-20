@@ -1,8 +1,10 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import ResultsPage from './pages/ResultsPage'
 import SharePage from './pages/SharePage'
 import MePage from './pages/MePage'
+import HistoryPage from './pages/HistoryPage'
+import NotFoundPage from './pages/NotFoundPage'
 import AppShell from './components/AppShell'
 
 export default function App() {
@@ -13,7 +15,8 @@ export default function App() {
         <Route path="/result" element={<ResultsPage />} />
         <Route path="/share" element={<SharePage />} />
         <Route path="/me" element={<MePage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/history" element={<HistoryPage />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </AppShell>
   )

@@ -4,6 +4,13 @@ import { Back, Bolt, Copy, Refresh, Share } from '../components/Icons'
 import ChatBubble from '../components/ChatBubble'
 import { useToast } from '../components/Toast'
 import { ApiError, generateReply, type Relation, type Reply, type StyleKey } from '../lib/api'
+import {
+  getEntry,
+  newId,
+  updateReplies,
+  upsertEntry,
+  type HistoryEntry,
+} from '../lib/history'
 
 const STYLES: { key: StyleKey; label: string; icon: string }[] = [
   { key: 'savage', label: '爽文反击', icon: '⚡' },
@@ -47,24 +54,69 @@ type LocState = {
   text?: string
   rel?: Relation
   reply?: Reply
+  style?: StyleKey
+  entryId?: string
+}
+
+function loadEntryState(state: LocState | undefined): {
+  entry?: HistoryEntry
+  initialReplies: Partial<Record<StyleKey, Reply>>
+  initialStyle: StyleKey
+} {
+  if (state?.entryId) {
+    const entry = getEntry(state.entryId)
+    if (entry) {
+      const firstStyle = (state.style ??
+        (Object.keys(entry.replies)[0] as StyleKey | undefined) ??
+        'savage') as StyleKey
+      return { entry, initialReplies: entry.replies, initialStyle: firstStyle }
+    }
+  }
+  const replies: Partial<Record<StyleKey, Reply>> = state?.reply
+    ? { savage: state.reply }
+    : {}
+  return { initialReplies: replies, initialStyle: state?.style ?? 'savage' }
 }
 
 export default function ResultsPage() {
   const nav = useNavigate()
   const toast = useToast()
   const { state } = useLocation() as { state?: LocState }
-  const themMsg = state?.text?.trim() || '你最近怎么这么敷衍我？'
-  const relation: Relation = state?.rel ?? 'couple'
-  const isDemo = !state?.reply
+  const loaded = loadEntryState(state)
+  const themMsg =
+    loaded.entry?.text || state?.text?.trim() || '你最近怎么这么敷衍我？'
+  const relation: Relation = loaded.entry?.relation ?? state?.rel ?? 'couple'
+  const hasAnyReply = Object.keys(loaded.initialReplies).length > 0
+  const isDemo = !hasAnyReply
 
-  const [style, setStyle] = useState<StyleKey>('savage')
-  const cacheRef = useRef<Partial<Record<StyleKey, Reply>>>({
-    savage: state?.reply,
-  })
-  const [reply, setReply] = useState<Reply>(state?.reply ?? FALLBACK.savage)
+  const [style, setStyle] = useState<StyleKey>(loaded.initialStyle)
+  const cacheRef = useRef<Partial<Record<StyleKey, Reply>>>(loaded.initialReplies)
+  const entryIdRef = useRef<string | null>(
+    loaded.entry?.id ?? state?.entryId ?? null,
+  )
+  const [reply, setReply] = useState<Reply>(
+    loaded.initialReplies[loaded.initialStyle] ?? FALLBACK[loaded.initialStyle],
+  )
   const [loading, setLoading] = useState(false)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<null | 'one' | 'all'>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const persistEntry = (patch: Partial<Record<StyleKey, Reply>>) => {
+    if (isDemo) return
+    if (entryIdRef.current) {
+      updateReplies(entryIdRef.current, patch)
+    } else {
+      const id = newId()
+      entryIdRef.current = id
+      upsertEntry({
+        id,
+        text: themMsg,
+        relation,
+        replies: { ...cacheRef.current, ...patch },
+        createdAt: Date.now(),
+      })
+    }
+  }
 
   const fetchStyle = async (target: StyleKey, force = false) => {
     if (!force && cacheRef.current[target]) {
@@ -87,6 +139,7 @@ export default function ResultsPage() {
       })
       cacheRef.current[target] = r
       setReply(r)
+      persistEntry({ [target]: r })
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : '生成失败，请重试'
@@ -98,18 +151,49 @@ export default function ResultsPage() {
   }
 
   useEffect(() => {
+    if (!entryIdRef.current && hasAnyReply && !isDemo) {
+      persistEntry({ ...cacheRef.current })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     fetchStyle(style)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [style])
 
-  const onCopy = async () => {
+  const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(reply.me)
+      await navigator.clipboard.writeText(text)
+      return true
     } catch {
-      /* noop */
+      return false
     }
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1200)
+  }
+
+  const onCopyOne = async () => {
+    const ok = await copyToClipboard(reply.me)
+    if (ok) {
+      setCopied('one')
+      setTimeout(() => setCopied(null), 1200)
+    } else {
+      toast.show('复制失败，请手动长按选中', 'error')
+    }
+  }
+
+  const onCopyAll = async () => {
+    const lines: string[] = [`[对方] ${themMsg}`, `[我] ${reply.me}`]
+    reply.dialog.forEach((t) => {
+      lines.push(`[对方] ${t.them}`, `[我] ${t.me}`)
+    })
+    const ok = await copyToClipboard(lines.join('\n'))
+    if (ok) {
+      setCopied('all')
+      toast.show('整段对话已复制', 'success')
+      setTimeout(() => setCopied(null), 1200)
+    } else {
+      toast.show('复制失败，请手动长按选中', 'error')
+    }
   }
 
   const onRegenerate = () => {
@@ -185,7 +269,9 @@ export default function ResultsPage() {
       {/* Conversation — key 强制每次换风格/重新生成都重播卡片爆出动画 */}
       <section
         key={`${style}-${loading ? 'l' : reply.me.slice(0, 6)}`}
-        className="relative px-4 mt-3 space-y-3"
+        className={`relative px-4 mt-3 space-y-3 transition-opacity duration-300 ${
+          loading ? 'opacity-60 animate-pulse' : 'opacity-100'
+        }`}
       >
         <div style={{ animationDelay: '40ms' }} className="animate-cardBoom">
           <ChatBubble side="left" label="对方">
@@ -202,7 +288,12 @@ export default function ResultsPage() {
             <div className="rounded-2xl bg-card/90 px-3 py-2">
               <ChatBubble side="right" tone="primary" label="你（反击）">
                 {loading ? (
-                  <TypingDots />
+                  <div className="flex items-center gap-2">
+                    <TypingDots />
+                    <span className="text-[12px] text-white/60">
+                      正在想一句更狠的…
+                    </span>
+                  </div>
                 ) : (
                   <div className="whitespace-pre-line">{reply.me}</div>
                 )}
@@ -220,33 +311,41 @@ export default function ResultsPage() {
           <span className="h-px flex-1 bg-white/10" />
         </div>
 
-        {!loading &&
-          reply.dialog.map((turn, i) => (
-            <div
-              key={i}
-              style={{ animationDelay: `${260 + i * 180}ms` }}
-              className="space-y-3 animate-cardBoom"
-            >
-              <ChatBubble side="left" label="对方">
-                {turn.them}
-              </ChatBubble>
-              <ChatBubble side="right" tone="primary">
-                <div className="whitespace-pre-line">{turn.me}</div>
-              </ChatBubble>
-            </div>
-          ))}
+        {reply.dialog.map((turn, i) => (
+          <div
+            key={i}
+            style={{ animationDelay: `${260 + i * 180}ms` }}
+            className="space-y-3 animate-cardBoom"
+          >
+            <ChatBubble side="left" label="对方">
+              {turn.them}
+            </ChatBubble>
+            <ChatBubble side="right" tone="primary">
+              <div className="whitespace-pre-line">{turn.me}</div>
+            </ChatBubble>
+          </div>
+        ))}
       </section>
 
       {/* Bottom actions */}
       <div className="sticky bottom-[92px] mt-6 px-4">
         <div className="rounded-2xl bg-card/85 backdrop-blur border border-white/5 p-3 flex items-center gap-2 shadow-card">
           <button
-            onClick={onCopy}
+            onClick={onCopyOne}
             disabled={loading}
             className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+            title="复制主反击"
           >
             <Copy className="w-4 h-4" />
-            {copied ? '已复制' : '复制'}
+            {copied === 'one' ? '已复制' : '复制'}
+          </button>
+          <button
+            onClick={onCopyAll}
+            disabled={loading}
+            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50 text-[13px]"
+            title="复制对方+你的整段对话"
+          >
+            {copied === 'all' ? '已复制' : '复制全段'}
           </button>
           <button
             onClick={onRegenerate}

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
-import { ApiError, generateReply } from '../lib/api'
+import { ApiError, generateReply, type StyleKey } from '../lib/api'
 import { useToast } from '../components/Toast'
 
 const RELATIONS = [
@@ -13,11 +13,19 @@ const RELATIONS = [
   { key: 'family', label: '家人', emoji: '🏠' },
 ] as const
 
+const STYLES: { key: StyleKey; label: string; icon: string; desc: string }[] = [
+  { key: 'savage', label: '爽文反击', icon: '⚡', desc: '直球硬刚' },
+  { key: 'logic', label: '逻辑碾压', icon: '🔥', desc: '讲道理到你服' },
+  { key: 'sarcasm', label: '阴阳怪气', icon: '😏', desc: '拐弯抹角扎你' },
+  { key: 'calm', label: '冷静终结', icon: '🧊', desc: '不带情绪压一下' },
+]
+
 export default function HomePage() {
   const nav = useNavigate()
   const toast = useToast()
   const [text, setText] = useState('')
   const [rel, setRel] = useState<(typeof RELATIONS)[number]['key']>('couple')
+  const [style, setStyle] = useState<StyleKey>('savage')
   const [firing, setFiring] = useState(false)
   const [generating, setGenerating] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
@@ -37,9 +45,9 @@ export default function HomePage() {
       const reply = await generateReply({
         text: trimmed,
         relation: rel,
-        style: 'savage',
+        style,
       })
-      nav('/result', { state: { text: trimmed, rel, reply } })
+      nav('/result', { state: { text: trimmed, rel, reply, style } })
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : '生成失败，请重试'
@@ -124,6 +132,36 @@ export default function HomePage() {
                 >
                   <span className="mr-1">{r.emoji}</span>
                   {r.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-[11px] text-muted px-1 mb-2">
+            <span>选风格</span>
+            <span>
+              {STYLES.find((s) => s.key === style)?.desc}
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {STYLES.map((s) => {
+              const on = s.key === style
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => setStyle(s.key)}
+                  className={`h-[62px] rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${
+                    on
+                      ? 'border-transparent bg-cta-gradient text-white shadow-glowOrange scale-[1.02]'
+                      : 'border-white/10 bg-white/5 text-white/80 hover:text-white'
+                  }`}
+                >
+                  <span className="text-[18px] leading-none">{s.icon}</span>
+                  <span className="text-[11.5px] font-heavy font-black">
+                    {s.label}
+                  </span>
                 </button>
               )
             })}

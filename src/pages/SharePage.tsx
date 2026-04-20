@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toBlob, toPng } from 'html-to-image'
+import QRCode from 'qrcode'
 import { Back, Download, Home, Share, User } from '../components/Icons'
 import Fireworks from '../components/Fireworks'
 import { useToast } from '../components/Toast'
@@ -48,9 +49,22 @@ export default function SharePage() {
   const [dinged, setDinged] = useState(false)
   const [fireworks, setFireworks] = useState(false)
   const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const ready = shown >= lines.length
+  const shareUrl =
+    typeof window !== 'undefined' ? window.location.origin : 'https://fightsim.app'
+
+  useEffect(() => {
+    QRCode.toDataURL(shareUrl, {
+      margin: 0,
+      width: 160,
+      color: { dark: '#0F1115', light: '#ECECEC' },
+    })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(''))
+  }, [shareUrl])
 
   useEffect(() => {
     if (shown >= lines.length) {
@@ -185,10 +199,22 @@ export default function SharePage() {
             {shown < lines.length && (
               <Row side={lines[shown].side} text="…" typing />
             )}
-            <div className="pt-2 text-center text-[11px] text-black/40">
-              <span className="inline-flex items-center gap-1">
-                📷 来自「吵架模拟器」
-              </span>
+            <div className="mt-4 pt-3 border-t border-black/10 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] text-black/50 tracking-wide">
+                  来自「吵架模拟器」
+                </div>
+                <div className="text-[10px] text-black/40 mt-0.5">
+                  扫码你也来吵一架
+                </div>
+              </div>
+              {qrDataUrl && (
+                <img
+                  src={qrDataUrl}
+                  alt="二维码"
+                  className="w-11 h-11 rounded-md"
+                />
+              )}
             </div>
           </div>
         </div>
