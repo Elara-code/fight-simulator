@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
-import { ApiError, generateReply, type StyleKey } from '../lib/api'
+import { ApiError, generateReply, type Relation, type StyleKey } from '../lib/api'
 import { track } from '../lib/analytics'
 import { useToast } from '../components/Toast'
 
@@ -21,6 +21,66 @@ const STYLES: { key: StyleKey; label: string; icon: string; desc: string }[] = [
   { key: 'calm', label: '冷静终结', icon: '🧊', desc: '不带情绪压一下' },
 ]
 
+type Scenario = {
+  id: string
+  emoji: string
+  title: string
+  text: string
+  rel: Relation
+  style: StyleKey
+}
+
+const SCENARIOS: Scenario[] = [
+  {
+    id: 'cold_reply',
+    emoji: '🧊',
+    title: '对象不回消息',
+    text: '没事别找我，有事发消息。',
+    rel: 'couple',
+    style: 'savage',
+  },
+  {
+    id: 'boss_credit',
+    emoji: '💼',
+    title: '老板抢功劳',
+    text: '这次项目做得不错，辛苦大家配合我这个方案。',
+    rel: 'work',
+    style: 'logic',
+  },
+  {
+    id: 'family_marry',
+    emoji: '🏠',
+    title: '亲戚逼婚',
+    text: '你再不结婚，以后没人要你。',
+    rel: 'family',
+    style: 'calm',
+  },
+  {
+    id: 'friend_cancel',
+    emoji: '🚪',
+    title: '朋友放鸽子',
+    text: '抱歉啊，临时有点事，下次吧。',
+    rel: 'friend',
+    style: 'savage',
+  },
+  {
+    id: 'group_shade',
+    emoji: '🐍',
+    title: '群里被阴阳',
+    text: '哟，某人这打扮还挺"有个性"的哈。',
+    rel: 'friend',
+    style: 'sarcasm',
+  },
+  {
+    id: 'family_belittle',
+    emoji: '😮\u200d💨',
+    title: '家人贬低你',
+    text: '你看看人家孩子，再看看你。',
+    rel: 'family',
+    style: 'calm',
+  },
+]
+
 export default function HomePage() {
   const nav = useNavigate()
   const toast = useToast()
@@ -32,6 +92,13 @@ export default function HomePage() {
   const btnRef = useRef<HTMLButtonElement>(null)
 
   const canSubmit = text.trim().length > 0 && !generating
+
+  const onPickScenario = (s: Scenario) => {
+    setText(s.text)
+    setRel(s.rel)
+    setStyle(s.style)
+    track('scenario_pick', { id: s.id, rel: s.rel, style: s.style })
+  }
 
   const onSubmit = async () => {
     if (!canSubmit) return
@@ -114,6 +181,35 @@ export default function HomePage() {
         <p className="mt-2 text-center text-[13px] text-muted">
           AI 帮你复盘 · 生成反击 · 模拟对吵
         </p>
+      </section>
+
+      {/* Scenario strip — lower the "empty input box" cold-start barrier */}
+      <section className="relative mt-5">
+        <div className="flex items-end justify-between px-5 mb-2">
+          <div className="text-[13px] text-white/80 font-heavy font-black">
+            没想好写啥？试试这些
+          </div>
+          <div className="text-[11px] text-muted">← 滑动看更多</div>
+        </div>
+        <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-5 pb-1 snap-x snap-mandatory">
+          {SCENARIOS.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onPickScenario(s)}
+              className="snap-start shrink-0 w-[148px] h-[88px] rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] active:scale-[0.97] transition text-left p-3 flex flex-col justify-between"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-[18px] leading-none">{s.emoji}</span>
+                <span className="text-[13px] font-heavy font-black text-white/95 truncate">
+                  {s.title}
+                </span>
+              </div>
+              <div className="text-[11px] text-muted line-clamp-2 leading-tight">
+                {s.text}
+              </div>
+            </button>
+          ))}
+        </div>
       </section>
 
       {/* Input */}

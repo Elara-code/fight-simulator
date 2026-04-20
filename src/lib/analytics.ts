@@ -1,5 +1,6 @@
 type EventName =
   | 'session_start'
+  | 'scenario_pick'
   | 'generate_submit'
   | 'generate_success'
   | 'generate_error'
