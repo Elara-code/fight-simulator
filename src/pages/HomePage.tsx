@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
-import { generateReply } from '../lib/api'
+import { ApiError, generateReply } from '../lib/api'
+import { useToast } from '../components/Toast'
 
 const RELATIONS = [
   { key: 'couple', label: '情侣', emoji: '💖' },
@@ -14,6 +15,7 @@ const RELATIONS = [
 
 export default function HomePage() {
   const nav = useNavigate()
+  const toast = useToast()
   const [text, setText] = useState('')
   const [rel, setRel] = useState<(typeof RELATIONS)[number]['key']>('couple')
   const [firing, setFiring] = useState(false)
@@ -39,8 +41,9 @@ export default function HomePage() {
       })
       nav('/result', { state: { text: trimmed, rel, reply } })
     } catch (err) {
-      console.warn('generate failed, falling back', err)
-      nav('/result', { state: { text: trimmed, rel, error: true } })
+      const message =
+        err instanceof ApiError ? err.message : '生成失败，请重试'
+      toast.show(message, 'error')
     } finally {
       setGenerating(false)
     }

@@ -1,55 +1,137 @@
 import 'dotenv/config'
-import express from 'express'
+import express, { type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
+import rateLimit from 'express-rate-limit'
 import OpenAI from 'openai'
 import { ZodError } from 'zod'
 import { GenerateRequest, generateReply } from './generate.js'
 
 const app = express()
-app.use(cors())
-app.use(express.json({ limit: '32kb' }))
+
+app.set('trust proxy', 1)
+
+const DEFAULT_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173']
+const allowedOrigins = (process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
+  : DEFAULT_ORIGINS)
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true)
+      if (allowedOrigins.includes(origin)) return cb(null, true)
+      cb(new Error(`CORS blocked: ${origin}`))
+    },
+  }),
+)
+
+app.use(express.json({ limit: '8kb' }))
+
+app.use((req, res, next) => {
+  const t0 = Date.now()
+  res.on('finish', () => {
+    const ms = Date.now() - t0
+    const ip = req.ip || req.socket.remoteAddress || '-'
+    console.log(
+      `[req] ${req.method} ${req.path} ${res.statusCode} ${ms}ms ip=${ip}`,
+    )
+  })
+  next()
+})
+
+const dailyCap = Number(process.env.DAILY_LIMIT) || 1000
+let dailyCount = 0
+let dailyWindowStart = startOfUtcDay()
+
+function startOfUtcDay(): number {
+  const d = new Date()
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+}
+
+function rolloverDailyCounterIfNeeded() {
+  const today = startOfUtcDay()
+  if (today !== dailyWindowStart) {
+    dailyWindowStart = today
+    dailyCount = 0
+  }
+}
+
+function dailyCapGuard(_req: Request, res: Response, next: NextFunction) {
+  rolloverDailyCounterIfNeeded()
+  if (dailyCount >= dailyCap) {
+    return res.status(429).json({
+      error: 'daily_cap_reached',
+      message: '今日生成次数已用尽，明天再来吵',
+    })
+  }
+  next()
+}
+
+const perIpLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: Number(process.env.PER_IP_PER_MINUTE) || 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: 'rate_limited',
+      message: '手速太快了，歇一会儿再来',
+    })
+  },
+})
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, hasKey: !!process.env.DEEPSEEK_API_KEY })
+  rolloverDailyCounterIfNeeded()
+  res.json({
+    ok: true,
+    hasKey: !!process.env.DEEPSEEK_API_KEY,
+    daily: { used: dailyCount, cap: dailyCap },
+  })
 })
 
-app.post('/api/generate', async (req, res) => {
-  const parsed = GenerateRequest.safeParse(req.body)
-  if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: 'bad_request', issues: parsed.error.issues })
-  }
-
-  try {
-    const reply = await generateReply(parsed.data)
-    res.json(reply)
-  } catch (err) {
-    if (err instanceof ZodError) {
-      console.error('[generate] schema mismatch from model:', err.issues)
-      return res.status(502).json({ error: 'bad_model_output' })
-    }
-    if (
-      err instanceof Error &&
-      (err as Error & { code?: string }).code === 'NO_API_KEY'
-    ) {
-      return res.status(503).json({ error: 'no_api_key' })
-    }
-    if (err instanceof OpenAI.APIError) {
-      console.error('[generate] openai error:', err.status, err.message)
+app.post(
+  '/api/generate',
+  perIpLimiter,
+  dailyCapGuard,
+  async (req, res) => {
+    const parsed = GenerateRequest.safeParse(req.body)
+    if (!parsed.success) {
       return res
-        .status(err.status ?? 502)
-        .json({ error: 'upstream_error', message: err.message })
+        .status(400)
+        .json({ error: 'bad_request', issues: parsed.error.issues })
     }
-    console.error('[generate] unknown error:', err)
-    res.status(500).json({ error: 'internal' })
-  }
-})
+
+    try {
+      const reply = await generateReply(parsed.data)
+      dailyCount += 1
+      res.json(reply)
+    } catch (err) {
+      if (err instanceof ZodError) {
+        console.error('[generate] schema mismatch from model:', err.issues)
+        return res.status(502).json({ error: 'bad_model_output' })
+      }
+      if (
+        err instanceof Error &&
+        (err as Error & { code?: string }).code === 'NO_API_KEY'
+      ) {
+        return res.status(503).json({ error: 'no_api_key' })
+      }
+      if (err instanceof OpenAI.APIError) {
+        console.error('[generate] openai error:', err.status, err.message)
+        return res
+          .status(err.status ?? 502)
+          .json({ error: 'upstream_error', message: err.message })
+      }
+      console.error('[generate] unknown error:', err)
+      res.status(500).json({ error: 'internal' })
+    }
+  },
+)
 
 const port = Number(process.env.PORT) || 8787
 app.listen(port, () => {
   const hasKey = !!process.env.DEEPSEEK_API_KEY
   console.log(
-    `[fight-sim] api listening on :${port}  (DEEPSEEK_API_KEY=${hasKey ? 'set' : 'MISSING'})`,
+    `[fight-sim] api listening on :${port}  (DEEPSEEK_API_KEY=${hasKey ? 'set' : 'MISSING'}, dailyCap=${dailyCap}, cors=${allowedOrigins.join(',')})`,
   )
 })

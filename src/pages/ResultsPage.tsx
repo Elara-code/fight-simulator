@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Back, Bolt, Copy, Refresh, Share } from '../components/Icons'
 import ChatBubble from '../components/ChatBubble'
-import { generateReply, type Relation, type Reply, type StyleKey } from '../lib/api'
+import { useToast } from '../components/Toast'
+import { ApiError, generateReply, type Relation, type Reply, type StyleKey } from '../lib/api'
 
 const STYLES: { key: StyleKey; label: string; icon: string }[] = [
   { key: 'savage', label: '爽文反击', icon: '⚡' },
@@ -46,14 +47,15 @@ type LocState = {
   text?: string
   rel?: Relation
   reply?: Reply
-  error?: boolean
 }
 
 export default function ResultsPage() {
   const nav = useNavigate()
+  const toast = useToast()
   const { state } = useLocation() as { state?: LocState }
   const themMsg = state?.text?.trim() || '你最近怎么这么敷衍我？'
   const relation: Relation = state?.rel ?? 'couple'
+  const isDemo = !state?.reply
 
   const [style, setStyle] = useState<StyleKey>('savage')
   const cacheRef = useRef<Partial<Record<StyleKey, Reply>>>({
@@ -62,18 +64,21 @@ export default function ResultsPage() {
   const [reply, setReply] = useState<Reply>(state?.reply ?? FALLBACK.savage)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [usedFallback, setUsedFallback] = useState(!!state?.error)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchStyle = async (target: StyleKey, force = false) => {
     if (!force && cacheRef.current[target]) {
       setReply(cacheRef.current[target]!)
+      setError(null)
       return
     }
-    if (usedFallback && !force) {
+    if (isDemo && !force) {
       setReply(FALLBACK[target])
+      setError(null)
       return
     }
     setLoading(true)
+    setError(null)
     try {
       const r = await generateReply({
         text: themMsg,
@@ -82,11 +87,11 @@ export default function ResultsPage() {
       })
       cacheRef.current[target] = r
       setReply(r)
-      setUsedFallback(false)
     } catch (err) {
-      console.warn('style fetch failed, using fallback', err)
-      setUsedFallback(true)
-      setReply(FALLBACK[target])
+      const message =
+        err instanceof ApiError ? err.message : '生成失败，请重试'
+      setError(message)
+      toast.show(message, 'error')
     } finally {
       setLoading(false)
     }
@@ -109,7 +114,6 @@ export default function ResultsPage() {
 
   const onRegenerate = () => {
     delete cacheRef.current[style]
-    setUsedFallback(false)
     fetchStyle(style, true)
   }
 
@@ -159,9 +163,21 @@ export default function ResultsPage() {
             )
           })}
         </div>
-        {usedFallback && (
-          <p className="mt-2 text-[11px] text-amber-300/80">
-            模型暂不可用，正在使用本地兜底文案。点「再来一句」可重试。
+        {error && !loading && (
+          <button
+            onClick={onRegenerate}
+            className="mt-2 w-full text-left text-[12px] rounded-xl border border-red-400/30 bg-red-500/10 text-red-100 px-3 py-2 flex items-center justify-between active:scale-[0.99]"
+          >
+            <span className="flex items-center gap-1.5">
+              <span>⚠️</span>
+              {error}
+            </span>
+            <span className="text-red-200/80 underline underline-offset-2">点这里重试</span>
+          </button>
+        )}
+        {isDemo && !error && (
+          <p className="mt-2 text-[11px] text-muted/80">
+            这是示例文案 · 回首页输入你的台词生成真实反击
           </p>
         )}
       </div>

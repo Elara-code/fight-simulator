@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { toBlob, toPng } from 'html-to-image'
 import { Back, Download, Home, Share, User } from '../components/Icons'
 import Fireworks from '../components/Fireworks'
+import { useToast } from '../components/Toast'
 
 const STICKERS = [
   { label: '吵赢了', from: '#FF3B4D', to: '#FF7A45' },
@@ -20,6 +22,7 @@ type ShareState = {
 
 export default function SharePage() {
   const nav = useNavigate()
+  const toast = useToast()
   const { state } = useLocation() as { state?: ShareState }
   const them = state?.them || '你最近怎么这么敷衍我？'
   const me =
@@ -44,8 +47,11 @@ export default function SharePage() {
   const [shown, setShown] = useState(0)
   const [dinged, setDinged] = useState(false)
   const [fireworks, setFireworks] = useState(false)
+  const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
 
-  // 气泡一条条出现（像打字）
+  const ready = shown >= lines.length
+
   useEffect(() => {
     if (shown >= lines.length) {
       const t = setTimeout(() => setDinged(true), 260)
@@ -55,9 +61,70 @@ export default function SharePage() {
     return () => clearTimeout(t)
   }, [shown, lines.length])
 
-  const onSave = () => {
-    setDinged(false)
-    requestAnimationFrame(() => setDinged(true))
+  const renderOptions = {
+    pixelRatio: 2,
+    cacheBust: true,
+    backgroundColor: '#ECECEC',
+  }
+
+  const onSave = async () => {
+    if (!canvasRef.current || busy) return
+    setBusy('save')
+    try {
+      const dataUrl = await toPng(canvasRef.current, renderOptions)
+      const a = document.createElement('a')
+      a.href = dataUrl
+      a.download = `吵架战绩-${Date.now()}.png`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      toast.show('图片已保存', 'success')
+    } catch (err) {
+      console.error('save screenshot failed', err)
+      toast.show('保存失败，请重试', 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const onShare = async () => {
+    if (!canvasRef.current || busy) return
+    setBusy('share')
+    try {
+      const blob = await toBlob(canvasRef.current, renderOptions)
+      if (!blob) throw new Error('blob is null')
+      const file = new File([blob], 'fight.png', { type: 'image/png' })
+      const nav = navigator as Navigator & {
+        canShare?: (data: ShareData) => boolean
+      }
+      if (nav.canShare?.({ files: [file] }) && navigator.share) {
+        await navigator.share({
+          files: [file],
+          title: '吵架模拟器 · 战绩截图',
+          text: '看看这次我怎么把架吵赢的',
+        })
+        setFireworks(true)
+      } else {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `吵架战绩-${Date.now()}.png`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+        toast.show('当前设备不支持直接分享，已为你下载图片', 'info')
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // user canceled native share sheet — not an error
+      } else {
+        console.error('share failed', err)
+        toast.show('分享失败，请重试', 'error')
+      }
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (
@@ -66,6 +133,7 @@ export default function SharePage() {
         <button
           onClick={() => nav(-1)}
           className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10 active:scale-95"
+          aria-label="返回"
         >
           <Back className="w-5 h-5" />
         </button>
@@ -74,10 +142,15 @@ export default function SharePage() {
           <button
             onClick={() => nav('/')}
             className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10"
+            aria-label="回首页"
           >
             <Home className="w-4 h-4" />
           </button>
-          <button className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10">
+          <button
+            onClick={() => nav('/me')}
+            className="w-9 h-9 grid place-items-center rounded-xl bg-white/5 border border-white/10"
+            aria-label="我的"
+          >
             <User className="w-4 h-4" />
           </button>
         </div>
@@ -85,12 +158,14 @@ export default function SharePage() {
 
       {/* Screenshot canvas */}
       <section className="relative px-4">
-        <div className="relative rounded-[22px] bg-[#ECECEC] p-4 shadow-card overflow-hidden">
+        <div
+          ref={canvasRef}
+          className="relative rounded-[22px] bg-[#ECECEC] p-4 shadow-card overflow-hidden"
+        >
           <div className="absolute top-2 right-3 text-[10px] text-black/20 tracking-widest font-num">
             299599
           </div>
 
-          {/* 叮！贴纸 */}
           {dinged && (
             <div className="absolute -top-2 right-4 -rotate-6 animate-dingPop">
               <Badge label="吵赢了" from="#FF3B4D" to="#FF7A45" big />
@@ -118,7 +193,6 @@ export default function SharePage() {
           </div>
         </div>
 
-        {/* sticker tray */}
         <div className="mt-4 grid grid-cols-4 gap-3">
           {STICKERS.map((s) => (
             <div
@@ -130,26 +204,27 @@ export default function SharePage() {
           ))}
         </div>
 
-        {/* actions */}
         <div className="mt-5 flex items-center gap-3">
           <button
             onClick={onSave}
-            className="flex-1 h-14 rounded-2xl bg-cta-gradient text-white font-heavy font-black flex items-center justify-center gap-2 shadow-glow active:scale-[0.98]"
+            disabled={!ready || busy !== null}
+            className="flex-1 h-14 rounded-2xl bg-cta-gradient text-white font-heavy font-black flex items-center justify-center gap-2 shadow-glow active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Download className="w-5 h-5" />
-            保存到相册
+            {busy === 'save' ? '保存中…' : '保存到相册'}
           </button>
           <button
-            onClick={() => setFireworks(true)}
-            className="h-14 px-5 rounded-2xl bg-share-gradient text-white font-heavy font-black flex items-center justify-center gap-2 shadow-glowAi active:scale-95"
+            onClick={onShare}
+            disabled={!ready || busy !== null}
+            className="h-14 px-5 rounded-2xl bg-share-gradient text-white font-heavy font-black flex items-center justify-center gap-2 shadow-glowAi active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <Share className="w-5 h-5" />
-            发给朋友
+            {busy === 'share' ? '准备中…' : '发给朋友'}
           </button>
         </div>
 
         <p className="mt-3 text-center text-[11px] text-muted">
-          气泡一条条出现 · 完成「叮」一下 · 分享成功 🎆 小烟花
+          {ready ? '保存成 PNG · 或调起系统分享发给好友' : '气泡展开中…'}
         </p>
       </section>
 
