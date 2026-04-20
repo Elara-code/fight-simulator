@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Back } from '../components/Icons'
 import { deleteEntry, listEntries, type HistoryEntry } from '../lib/history'
+import { track } from '../lib/analytics'
 import type { Relation } from '../lib/api'
 
 const REL_LABEL: Record<Relation, string> = {
@@ -20,6 +21,13 @@ export default function HistoryPage() {
   }, [])
 
   const onOpen = (e: HistoryEntry) => {
+    const daysSince = Math.floor(
+      (Date.now() - e.createdAt) / (1000 * 60 * 60 * 24),
+    )
+    track('history_reopen', {
+      days_since_created: daysSince,
+      styles_count: Object.keys(e.replies).length,
+    })
     nav('/result', {
       state: { entryId: e.id, text: e.text, rel: e.relation },
     })

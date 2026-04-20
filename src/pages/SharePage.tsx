@@ -5,6 +5,7 @@ import QRCode from 'qrcode'
 import { Back, Download, Home, Share, User } from '../components/Icons'
 import Fireworks from '../components/Fireworks'
 import { useToast } from '../components/Toast'
+import { track } from '../lib/analytics'
 
 const STICKERS = [
   { label: '吵赢了', from: '#FF3B4D', to: '#FF7A45' },
@@ -83,6 +84,7 @@ export default function SharePage() {
 
   const onSave = async () => {
     if (!canvasRef.current || busy) return
+    track('share_click', { target: 'save' })
     setBusy('save')
     try {
       const dataUrl = await toPng(canvasRef.current, renderOptions)
@@ -92,6 +94,7 @@ export default function SharePage() {
       document.body.appendChild(a)
       a.click()
       a.remove()
+      track('share_success', { target: 'save' })
       toast.show('图片已保存', 'success')
     } catch (err) {
       console.error('save screenshot failed', err)
@@ -103,6 +106,7 @@ export default function SharePage() {
 
   const onShare = async () => {
     if (!canvasRef.current || busy) return
+    track('share_click', { target: 'share' })
     setBusy('share')
     try {
       const blob = await toBlob(canvasRef.current, renderOptions)
@@ -117,6 +121,7 @@ export default function SharePage() {
           title: '吵架模拟器 · 战绩截图',
           text: '看看这次我怎么把架吵赢的',
         })
+        track('share_success', { target: 'share', channel: 'native' })
         setFireworks(true)
       } else {
         const url = URL.createObjectURL(blob)
@@ -127,6 +132,7 @@ export default function SharePage() {
         a.click()
         a.remove()
         setTimeout(() => URL.revokeObjectURL(url), 1000)
+        track('share_success', { target: 'share', channel: 'fallback_download' })
         toast.show('当前设备不支持直接分享，已为你下载图片', 'info')
       }
     } catch (err) {

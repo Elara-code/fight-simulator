@@ -4,6 +4,7 @@ import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
 import { ApiError, generateReply, type StyleKey } from '../lib/api'
+import { track } from '../lib/analytics'
 import { useToast } from '../components/Toast'
 
 const RELATIONS = [
@@ -41,14 +42,27 @@ export default function HomePage() {
     setGenerating(true)
 
     const trimmed = text.trim()
+    const t0 = Date.now()
+    track('generate_submit', {
+      relation: rel,
+      style,
+      text_length: trimmed.length,
+    })
     try {
       const reply = await generateReply({
         text: trimmed,
         relation: rel,
         style,
       })
+      track('generate_success', {
+        relation: rel,
+        style,
+        latency_ms: Date.now() - t0,
+      })
       nav('/result', { state: { text: trimmed, rel, reply, style } })
     } catch (err) {
+      const code = err instanceof ApiError ? err.code : 'unknown'
+      track('generate_error', { code, style, relation: rel })
       const message =
         err instanceof ApiError ? err.message : '生成失败，请重试'
       toast.show(message, 'error')

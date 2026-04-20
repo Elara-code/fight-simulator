@@ -4,6 +4,7 @@ import { Back, Bolt, Copy, Refresh, Share } from '../components/Icons'
 import ChatBubble from '../components/ChatBubble'
 import { useToast } from '../components/Toast'
 import { ApiError, generateReply, type Relation, type Reply, type StyleKey } from '../lib/api'
+import { track } from '../lib/analytics'
 import {
   getEntry,
   newId,
@@ -131,16 +132,31 @@ export default function ResultsPage() {
     }
     setLoading(true)
     setError(null)
+    const t0 = Date.now()
+    track('generate_submit', {
+      relation,
+      style: target,
+      text_length: themMsg.length,
+      from: 'results',
+    })
     try {
       const r = await generateReply({
         text: themMsg,
         relation,
         style: target,
       })
+      track('generate_success', {
+        relation,
+        style: target,
+        latency_ms: Date.now() - t0,
+        from: 'results',
+      })
       cacheRef.current[target] = r
       setReply(r)
       persistEntry({ [target]: r })
     } catch (err) {
+      const code = err instanceof ApiError ? err.code : 'unknown'
+      track('generate_error', { code, style: target, relation, from: 'results' })
       const message =
         err instanceof ApiError ? err.message : '生成失败，请重试'
       setError(message)
@@ -174,6 +190,7 @@ export default function ResultsPage() {
   const onCopyOne = async () => {
     const ok = await copyToClipboard(reply.me)
     if (ok) {
+      track('copy', { mode: 'one', style })
       setCopied('one')
       setTimeout(() => setCopied(null), 1200)
     } else {
@@ -188,6 +205,7 @@ export default function ResultsPage() {
     })
     const ok = await copyToClipboard(lines.join('\n'))
     if (ok) {
+      track('copy', { mode: 'all', style })
       setCopied('all')
       toast.show('整段对话已复制', 'success')
       setTimeout(() => setCopied(null), 1200)
@@ -197,8 +215,15 @@ export default function ResultsPage() {
   }
 
   const onRegenerate = () => {
+    track('regenerate', { style })
     delete cacheRef.current[style]
     fetchStyle(style, true)
+  }
+
+  const onStyleSwitch = (next: StyleKey) => {
+    if (next === style) return
+    track('style_switch', { from: style, to: next })
+    setStyle(next)
   }
 
   return (
@@ -236,7 +261,7 @@ export default function ResultsPage() {
               <button
                 key={s.key}
                 disabled={loading && !on}
-                onClick={() => setStyle(s.key)}
+                onClick={() => onStyleSwitch(s.key)}
                 className={`h-9 px-3.5 rounded-full border text-[13px] flex items-center gap-1 transition-all ${
                   on
                     ? 'border-transparent bg-cta-gradient text-white shadow-glowOrange scale-[1.04]'
