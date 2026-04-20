@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { toBlob, toPng } from 'html-to-image'
 import QRCode from 'qrcode'
-import { Back, Download, Home, Share, User } from '../components/Icons'
+import { Back, Copy, Download, Home, Share, User } from '../components/Icons'
 import Fireworks from '../components/Fireworks'
 import { useToast } from '../components/Toast'
 import { track } from '../lib/analytics'
+import { ApiError, createReplay, type StyleKey } from '../lib/api'
 
 const STICKERS = [
   { label: '吵赢了', from: '#FF3B4D', to: '#FF7A45' },
@@ -20,6 +21,7 @@ type ShareState = {
   them?: string
   me?: string
   dialog?: { them: string; me: string }[]
+  style?: StyleKey
 }
 
 export default function SharePage() {
@@ -49,13 +51,36 @@ export default function SharePage() {
   const [shown, setShown] = useState(0)
   const [dinged, setDinged] = useState(false)
   const [fireworks, setFireworks] = useState(false)
-  const [busy, setBusy] = useState<'save' | 'share' | null>(null)
+  const [busy, setBusy] = useState<'save' | 'share' | 'link' | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
+  const [replayUrl, setReplayUrl] = useState<string>('')
   const canvasRef = useRef<HTMLDivElement>(null)
 
   const ready = shown >= lines.length
-  const shareUrl =
+  const origin =
     typeof window !== 'undefined' ? window.location.origin : 'https://fightsim.app'
+  const shareUrl = replayUrl || origin
+  const style: StyleKey = state?.style ?? 'savage'
+
+  // Create a server-side replay on mount so the QR/link points to a real /r/:id.
+  // Fallback to origin if the server refuses — UI still works.
+  useEffect(() => {
+    let cancelled = false
+    createReplay({ them, me, dialog: followUps, style })
+      .then((r) => {
+        if (cancelled) return
+        setReplayUrl(`${origin}${r.url}`)
+        track('replay_create', { id: r.id })
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && err.code === 'rate_limited') return
+        /* swallow — QR still renders with origin */
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     QRCode.toDataURL(shareUrl, {
@@ -104,6 +129,25 @@ export default function SharePage() {
     }
   }
 
+  const onCopyLink = async () => {
+    if (busy) return
+    if (!replayUrl) {
+      toast.show('链接生成中，请稍后再试', 'info')
+      return
+    }
+    track('share_click', { target: 'copy_link' })
+    setBusy('link')
+    try {
+      await navigator.clipboard.writeText(replayUrl)
+      track('share_success', { target: 'copy_link' })
+      toast.show('链接已复制，去群里粘贴吧', 'success')
+    } catch {
+      toast.show('复制失败，请手动长按选中', 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const onShare = async () => {
     if (!canvasRef.current || busy) return
     track('share_click', { target: 'share' })
@@ -116,10 +160,13 @@ export default function SharePage() {
         canShare?: (data: ShareData) => boolean
       }
       if (nav.canShare?.({ files: [file] }) && navigator.share) {
+        const text = replayUrl
+          ? `看看这次我怎么把架吵赢的 ${replayUrl}`
+          : '看看这次我怎么把架吵赢的'
         await navigator.share({
           files: [file],
           title: '吵架模拟器 · 战绩截图',
-          text: '看看这次我怎么把架吵赢的',
+          text,
         })
         track('share_success', { target: 'share', channel: 'native' })
         setFireworks(true)
@@ -254,6 +301,19 @@ export default function SharePage() {
             {busy === 'share' ? '准备中…' : '发给朋友'}
           </button>
         </div>
+
+        <button
+          onClick={onCopyLink}
+          disabled={!ready || !replayUrl || busy !== null}
+          className="mt-3 w-full h-11 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-50 text-[13px]"
+        >
+          <Copy className="w-4 h-4" />
+          {busy === 'link'
+            ? '复制中…'
+            : replayUrl
+              ? '复制战绩链接（朋友点开就能看回放）'
+              : '链接生成中…'}
+        </button>
 
         <p className="mt-3 text-center text-[11px] text-muted">
           {ready ? '保存成 PNG · 或调起系统分享发给好友' : '气泡展开中…'}

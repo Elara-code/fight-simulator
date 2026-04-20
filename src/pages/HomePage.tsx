@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
@@ -81,15 +81,26 @@ const SCENARIOS: Scenario[] = [
   },
 ]
 
+type HomeLocState = { seedText?: string }
+
 export default function HomePage() {
   const nav = useNavigate()
+  const { state } = useLocation() as { state?: HomeLocState }
   const toast = useToast()
-  const [text, setText] = useState('')
+  const [text, setText] = useState(state?.seedText ?? '')
   const [rel, setRel] = useState<(typeof RELATIONS)[number]['key']>('couple')
   const [style, setStyle] = useState<StyleKey>('savage')
   const [firing, setFiring] = useState(false)
   const [generating, setGenerating] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!state?.seedText) return
+    // Clear the seedText from history state so a back-nav doesn't re-seed.
+    window.history.replaceState({}, '')
+    // Scroll to CTA so seeded user sees the button immediately.
+    setTimeout(() => btnRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+  }, [state?.seedText])
 
   const canSubmit = text.trim().length > 0 && !generating
 

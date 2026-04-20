@@ -9,6 +9,9 @@ type EventName =
   | 'regenerate'
   | 'share_click'
   | 'share_success'
+  | 'replay_create'
+  | 'replay_view'
+  | 'replay_cta_click'
   | 'history_reopen'
 
 type PostHogCapture = (event: string, props?: Record<string, unknown>) => void

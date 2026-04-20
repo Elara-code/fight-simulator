@@ -16,6 +16,7 @@ import OpenAI from 'openai'
 import { ZodError } from 'zod'
 import { GenerateRequest, generateReply } from './generate.js'
 import { log } from './logger.js'
+import { ReplayInput, createReplay, getReplay } from './replays.js'
 import { screenUserInput } from './safety.js'
 
 const app = express()
@@ -96,6 +97,16 @@ const perIpLimiter = rateLimit({
   },
 })
 
+const replayWriteLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: Number(process.env.REPLAY_WRITES_PER_MINUTE) || 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: 'rate_limited' })
+  },
+})
+
 app.get('/api/health', (_req, res) => {
   rolloverDailyCounterIfNeeded()
   res.json({
@@ -145,6 +156,45 @@ app.post('/api/generate', perIpLimiter, dailyCapGuard, async (req, res) => {
     Sentry.captureException(err)
     res.status(500).json({ error: 'internal' })
   }
+})
+
+app.post('/api/replays', replayWriteLimiter, (req, res) => {
+  const parsed = ReplayInput.safeParse(req.body)
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'bad_request', issues: parsed.error.issues })
+  }
+  const safety = screenUserInput(
+    `${parsed.data.them}\n${parsed.data.me}\n${parsed.data.dialog
+      .map((d) => `${d.them}\n${d.me}`)
+      .join('\n')}`,
+  )
+  if (!safety.ok) {
+    log.warn('replay_blocked', { code: safety.code })
+    return res.status(400).json({ error: safety.code, message: safety.reason })
+  }
+  const replay = createReplay(parsed.data)
+  res.status(201).json({ id: replay.id, url: `/r/${replay.id}` })
+})
+
+app.get('/api/replays/:id', (req, res) => {
+  const id = req.params.id
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const replay = getReplay(id)
+  if (!replay) {
+    return res.status(404).json({ error: 'not_found' })
+  }
+  res.json({
+    id: replay.id,
+    them: replay.them,
+    me: replay.me,
+    dialog: replay.dialog,
+    style: replay.style,
+    createdAt: replay.createdAt,
+  })
 })
 
 const port = Number(process.env.PORT) || 8787

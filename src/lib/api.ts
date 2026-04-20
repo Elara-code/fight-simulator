@@ -62,6 +62,43 @@ export async function generateReply(
   }
 }
 
+export type ReplayPayload = {
+  them: string
+  me: string
+  dialog: { them: string; me: string }[]
+  style: StyleKey
+}
+
+export type Replay = ReplayPayload & {
+  id: string
+  createdAt: number
+}
+
+export async function createReplay(body: ReplayPayload): Promise<{ id: string; url: string }> {
+  const res = await fetch('/api/replays', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    const message = typeof payload.message === 'string' ? payload.message : undefined
+    throw new ApiError(res.status, code, message ?? mapCodeToMessage(code, res.status))
+  }
+  return res.json()
+}
+
+export async function getReplay(id: string): Promise<Replay> {
+  const res = await fetch(`/api/replays/${encodeURIComponent(id)}`)
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    throw new ApiError(res.status, code, mapCodeToMessage(code, res.status))
+  }
+  return res.json()
+}
+
 function mapCodeToMessage(code: string, status: number): string {
   switch (code) {
     case 'rate_limited':
@@ -80,6 +117,8 @@ function mapCodeToMessage(code: string, status: number): string {
       return '输入看起来是无意义重复，请好好说话'
     case 'hard_block':
       return '这条内容我们没法帮你生成，换一句试试'
+    case 'not_found':
+      return '这条战绩已过期或不存在'
     default:
       return status >= 500 ? '服务临时抽风，请重试' : '请求失败，请重试'
   }
