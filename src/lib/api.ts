@@ -1,5 +1,6 @@
 export type StyleKey = 'savage' | 'logic' | 'sarcasm' | 'calm'
 export type Relation = 'couple' | 'friend' | 'work' | 'family'
+export type GenerateHint = 'harder' | 'softer' | 'different'
 
 export type Reply = {
   me: string
@@ -10,6 +11,7 @@ export type GenerateRequest = {
   text: string
   relation: Relation
   style: StyleKey
+  hint?: GenerateHint
 }
 
 export class ApiError extends Error {

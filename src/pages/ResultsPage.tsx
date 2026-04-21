@@ -3,7 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Back, Bolt, Copy, Refresh, Share } from '../components/Icons'
 import ChatBubble from '../components/ChatBubble'
 import { useToast } from '../components/Toast'
-import { ApiError, generateReply, type Relation, type Reply, type StyleKey } from '../lib/api'
+import {
+  ApiError,
+  generateReply,
+  type GenerateHint,
+  type Relation,
+  type Reply,
+  type StyleKey,
+} from '../lib/api'
 import { track } from '../lib/analytics'
 import {
   getEntry,
@@ -119,13 +126,17 @@ export default function ResultsPage() {
     }
   }
 
-  const fetchStyle = async (target: StyleKey, force = false) => {
-    if (!force && cacheRef.current[target]) {
+  const fetchStyle = async (
+    target: StyleKey,
+    opts: { force?: boolean; hint?: GenerateHint } = {},
+  ) => {
+    const { force = false, hint } = opts
+    if (!force && !hint && cacheRef.current[target]) {
       setReply(cacheRef.current[target]!)
       setError(null)
       return
     }
-    if (isDemo && !force) {
+    if (isDemo && !force && !hint) {
       setReply(FALLBACK[target])
       setError(null)
       return
@@ -138,25 +149,28 @@ export default function ResultsPage() {
       style: target,
       text_length: themMsg.length,
       from: 'results',
+      hint,
     })
     try {
       const r = await generateReply({
         text: themMsg,
         relation,
         style: target,
+        hint,
       })
       track('generate_success', {
         relation,
         style: target,
         latency_ms: Date.now() - t0,
         from: 'results',
+        hint,
       })
       cacheRef.current[target] = r
       setReply(r)
       persistEntry({ [target]: r })
     } catch (err) {
       const code = err instanceof ApiError ? err.code : 'unknown'
-      track('generate_error', { code, style: target, relation, from: 'results' })
+      track('generate_error', { code, style: target, relation, from: 'results', hint })
       const message =
         err instanceof ApiError ? err.message : '生成失败，请重试'
       setError(message)
@@ -214,11 +228,17 @@ export default function ResultsPage() {
     }
   }
 
-  const onRegenerate = () => {
-    track('regenerate', { style })
+  const onRegenerate = (hint?: GenerateHint) => {
+    track('regenerate', { style, hint })
     delete cacheRef.current[style]
-    fetchStyle(style, true)
+    fetchStyle(style, { force: true, hint })
   }
+
+  const HINT_CHIPS: { hint: GenerateHint; icon: string; label: string }[] = [
+    { hint: 'harder', icon: '🔥', label: '再狠点' },
+    { hint: 'softer', icon: '🕊️', label: '缓和点' },
+    { hint: 'different', icon: '🎲', label: '换个角度' },
+  ]
 
   const onStyleSwitch = (next: StyleKey) => {
     if (next === style) return
@@ -276,7 +296,7 @@ export default function ResultsPage() {
         </div>
         {error && !loading && (
           <button
-            onClick={onRegenerate}
+            onClick={() => onRegenerate()}
             className="mt-2 w-full text-left text-[12px] rounded-xl border border-red-400/30 bg-red-500/10 text-red-100 px-3 py-2 flex items-center justify-between active:scale-[0.99]"
           >
             <span className="flex items-center gap-1.5">
@@ -292,6 +312,26 @@ export default function ResultsPage() {
           </p>
         )}
       </div>
+
+      {/* Regenerate hint chips */}
+      {!isDemo && (
+        <div className="relative px-4 mt-2 no-scrollbar overflow-x-auto">
+          <div className="flex items-center gap-2 py-1 min-w-max">
+            <span className="text-[11px] text-muted/70 pr-1">不满意？</span>
+            {HINT_CHIPS.map((c) => (
+              <button
+                key={c.hint}
+                disabled={loading}
+                onClick={() => onRegenerate(c.hint)}
+                className="h-8 px-3 rounded-full border border-white/10 bg-white/5 text-white/80 text-[12px] flex items-center gap-1 active:scale-95 disabled:opacity-50"
+              >
+                <span>{c.icon}</span>
+                <span>{c.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Conversation — key 强制每次换风格/重新生成都重播卡片爆出动画 */}
       <section
@@ -375,7 +415,7 @@ export default function ResultsPage() {
             {copied === 'all' ? '已复制' : '复制全段'}
           </button>
           <button
-            onClick={onRegenerate}
+            onClick={() => onRegenerate()}
             disabled={loading}
             className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
             title="再来一句"

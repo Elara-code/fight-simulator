@@ -147,11 +147,15 @@ app.post('/api/generate', perIpLimiter, dailyCapGuard, async (req, res) => {
       log.error('schema_mismatch', { issues: err.issues })
       return res.status(502).json({ error: 'bad_model_output' })
     }
-    if (
-      err instanceof Error &&
-      (err as Error & { code?: string }).code === 'NO_API_KEY'
-    ) {
+    const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined
+    if (code === 'NO_API_KEY') {
       return res.status(503).json({ error: 'no_api_key' })
+    }
+    if (code === 'BAD_OUTPUT') {
+      return res.status(502).json({
+        error: 'bad_model_output',
+        message: '生成内容没通过内容审核，请再试一次',
+      })
     }
     if (err instanceof OpenAI.APIError) {
       log.error('openai_error', { status: err.status, message: err.message })
