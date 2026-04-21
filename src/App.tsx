@@ -8,6 +8,7 @@ const SharePage = lazy(() => import('./pages/SharePage'))
 const HistoryPage = lazy(() => import('./pages/HistoryPage'))
 const MePage = lazy(() => import('./pages/MePage'))
 const ReplayPage = lazy(() => import('./pages/ReplayPage'))
+const TrainPage = lazy(() => import('./pages/TrainPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 
 function RouteFallback() {
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/me" element={<MePage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/r/:id" element={<ReplayPage />} />
+          <Route path="/train" element={<TrainPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>

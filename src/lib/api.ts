@@ -99,6 +99,56 @@ export async function getReplay(id: string): Promise<Replay> {
   return res.json()
 }
 
+export type TrainMessage = { role: 'them' | 'me'; text: string }
+export type TrainRequest = {
+  opening: string
+  relation: Relation
+  history: TrainMessage[]
+}
+export type TrainTurn = {
+  ended: boolean
+  them?: string
+  score?: number
+  verdict?: 'win' | 'draw' | 'lose'
+  feedback?: string
+}
+
+export async function trainNext(
+  body: TrainRequest,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<TrainTurn> {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  if (opts.signal) {
+    if (opts.signal.aborted) controller.abort()
+    else opts.signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+  try {
+    const res = await fetch('/api/train/next', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}))
+      const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+      const message = typeof payload.message === 'string' ? payload.message : undefined
+      throw new ApiError(res.status, code, message ?? mapCodeToMessage(code, res.status))
+    }
+    return (await res.json()) as TrainTurn
+  } catch (err) {
+    if (err instanceof ApiError) throw err
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(0, 'timeout', '网络超时，请重试')
+    }
+    throw new ApiError(0, 'network', '网络异常，请检查连接')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function reportReplay(
   id: string,
 ): Promise<{ removed: boolean; reportCount: number }> {

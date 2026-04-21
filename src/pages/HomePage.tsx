@@ -292,7 +292,14 @@ export default function HomePage() {
           <Bolt className="w-5 h-5 text-accent" />
           <span className="text-sm text-white/80 tracking-wide">吵架模拟器</span>
         </div>
-        <span className="text-[11px] text-muted">v0.1</span>
+        <button
+          onClick={() => nav('/train')}
+          className="text-[11.5px] text-white/85 hover:text-white px-2.5 h-7 rounded-full border border-white/10 bg-white/5 active:scale-95 flex items-center gap-1"
+          aria-label="进入训练模式"
+        >
+          <span>🥊</span>
+          <span className="font-heavy font-black">训练模式</span>
+        </button>
       </header>
 
       {/* Hero */}

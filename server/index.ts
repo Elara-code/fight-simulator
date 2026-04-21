@@ -24,6 +24,7 @@ import {
   reportReplay,
 } from './replays.js'
 import { screenUserInput } from './safety.js'
+import { TrainRequest, trainTurn } from './train.js'
 
 const app = express()
 
@@ -159,6 +160,51 @@ app.post('/api/generate', perIpLimiter, dailyCapGuard, async (req, res) => {
         .json({ error: 'upstream_error', message: err.message })
     }
     log.error('internal_error', { err: err instanceof Error ? err.message : String(err) })
+    Sentry.captureException(err)
+    res.status(500).json({ error: 'internal' })
+  }
+})
+
+app.post('/api/train/next', perIpLimiter, dailyCapGuard, async (req, res) => {
+  const parsed = TrainRequest.safeParse(req.body)
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'bad_request', issues: parsed.error.issues })
+  }
+  // Safety-screen the opening + latest user message (don't re-scan whole history every turn).
+  const latestMe = [...parsed.data.history].reverse().find((m) => m.role === 'me')
+  const toScreen = `${parsed.data.opening}\n${latestMe?.text ?? ''}`.trim()
+  if (toScreen) {
+    const safety = screenUserInput(toScreen)
+    if (!safety.ok) {
+      log.warn('train_safety_blocked', { code: safety.code })
+      return res.status(400).json({ error: safety.code, message: safety.reason })
+    }
+  }
+  try {
+    const result = await trainTurn(parsed.data)
+    dailyCount += 1
+    res.json(result)
+  } catch (err) {
+    if (err instanceof ZodError) {
+      log.error('train_schema_mismatch', { issues: err.issues })
+      return res.status(502).json({ error: 'bad_model_output' })
+    }
+    if (
+      err instanceof Error &&
+      (err as Error & { code?: string }).code === 'NO_API_KEY'
+    ) {
+      return res.status(503).json({ error: 'no_api_key' })
+    }
+    if (err instanceof OpenAI.APIError) {
+      log.error('train_openai_error', { status: err.status, message: err.message })
+      Sentry.captureException(err)
+      return res
+        .status(err.status ?? 502)
+        .json({ error: 'upstream_error', message: err.message })
+    }
+    log.error('train_internal_error', { err: err instanceof Error ? err.message : String(err) })
     Sentry.captureException(err)
     res.status(500).json({ error: 'internal' })
   }
