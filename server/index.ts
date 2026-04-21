@@ -9,6 +9,9 @@ if (process.env.SENTRY_DSN) {
   })
 }
 
+import path from 'node:path'
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import express, { type Request, type Response, type NextFunction } from 'express'
 import cors from 'cors'
 import rateLimit from 'express-rate-limit'
@@ -16,6 +19,7 @@ import OpenAI from 'openai'
 import { ZodError } from 'zod'
 import { GenerateRequest, generateReply } from './generate.js'
 import { log } from './logger.js'
+import { renderDefaultShell, renderReplayHtml } from './og.js'
 import {
   ReplayInput,
   adminRemoveReplay,
@@ -26,6 +30,10 @@ import {
 } from './replays.js'
 import { screenUserInput } from './safety.js'
 import { TrainRequest, trainTurn } from './train.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const DIST_DIR = path.resolve(__dirname, '..', 'dist')
+const HAS_DIST = existsSync(DIST_DIR)
 
 const app = express()
 
@@ -308,6 +316,54 @@ app.delete('/api/replays/:id', (req, res) => {
   res.json({ ok: true })
 })
 
+function requestOrigin(req: Request): string {
+  const envOrigin = process.env.PUBLIC_ORIGIN
+  if (envOrigin) return envOrigin.replace(/\/$/, '')
+  const proto =
+    (req.headers['x-forwarded-proto'] as string | undefined) || req.protocol
+  const host = req.headers['x-forwarded-host'] || req.headers.host
+  return `${proto}://${host}`
+}
+
+// SSR-style OG tags for replay share links. Crawlers (WeChat, Twitter,
+// Facebook, Slack, Telegram, etc.) get per-replay title/description baked
+// into the HTML; real browsers also get them, then the SPA takes over.
+app.get('/r/:id', (req, res) => {
+  const id = req.params.id
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+    return res.status(400).type('html').send(renderDefaultShell())
+  }
+  const replay = getReplay(id)
+  if (!replay) {
+    return res.status(404).type('html').send(renderDefaultShell())
+  }
+  const html = renderReplayHtml(replay, requestOrigin(req))
+  res
+    .type('html')
+    .set('Cache-Control', 'public, max-age=300, s-maxage=600')
+    .send(html)
+})
+
+if (HAS_DIST) {
+  app.use(
+    express.static(DIST_DIR, {
+      index: false,
+      maxAge: '1h',
+      setHeaders: (res, p) => {
+        if (p.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache')
+      },
+    }),
+  )
+  // SPA fallback — anything not /api/*, not a static file, not /r/:id goes
+  // to index.html so client-side routing handles /train, /feed, /me, etc.
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next()
+    res.type('html').send(renderDefaultShell())
+  })
+} else {
+  log.warn('dist_missing', { dir: DIST_DIR })
+}
+
 const port = Number(process.env.PORT) || 8787
 app.listen(port, () => {
   log.info('api_listening', {
@@ -316,5 +372,6 @@ app.listen(port, () => {
     dailyCap,
     cors: allowedOrigins,
     sentry: !!process.env.SENTRY_DSN,
+    staticDist: HAS_DIST,
   })
 })
