@@ -12,6 +12,7 @@ type EventName =
   | 'replay_create'
   | 'replay_view'
   | 'replay_cta_click'
+  | 'replay_report'
   | 'history_reopen'
 
 type PostHogCapture = (event: string, props?: Record<string, unknown>) => void

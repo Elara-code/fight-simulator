@@ -16,7 +16,13 @@ import OpenAI from 'openai'
 import { ZodError } from 'zod'
 import { GenerateRequest, generateReply } from './generate.js'
 import { log } from './logger.js'
-import { ReplayInput, createReplay, getReplay } from './replays.js'
+import {
+  ReplayInput,
+  adminRemoveReplay,
+  createReplay,
+  getReplay,
+  reportReplay,
+} from './replays.js'
 import { screenUserInput } from './safety.js'
 
 const app = express()
@@ -195,6 +201,55 @@ app.get('/api/replays/:id', (req, res) => {
     style: replay.style,
     createdAt: replay.createdAt,
   })
+})
+
+const reportLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: 'rate_limited' })
+  },
+})
+
+app.post('/api/replays/:id/report', reportLimiter, (req, res) => {
+  const id = req.params.id
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const result = reportReplay(id)
+  if (!result.ok) {
+    return res.status(404).json({ error: result.code })
+  }
+  log.info('replay_reported', {
+    id,
+    reportCount: result.reportCount,
+    removed: result.removed,
+  })
+  res.json({ removed: result.removed, reportCount: result.reportCount })
+})
+
+app.delete('/api/replays/:id', (req, res) => {
+  const token = process.env.ADMIN_TOKEN
+  if (!token) {
+    return res.status(503).json({ error: 'admin_disabled' })
+  }
+  const header = req.header('authorization') || ''
+  const expected = `Bearer ${token}`
+  if (header !== expected) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  const id = req.params.id
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const removed = adminRemoveReplay(id)
+  if (!removed) {
+    return res.status(404).json({ error: 'not_found' })
+  }
+  log.info('replay_admin_removed', { id })
+  res.json({ ok: true })
 })
 
 const port = Number(process.env.PORT) || 8787

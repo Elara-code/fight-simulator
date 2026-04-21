@@ -16,6 +16,7 @@
   "dependencies": {
     "@sentry/node": "^8.55.1",
     "@sentry/react": "^8.55.1",
+    "better-sqlite3": "^12.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
@@ -30,6 +31,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/qrcode": "^1.5.6",

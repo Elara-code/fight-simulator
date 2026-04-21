@@ -55,6 +55,7 @@ export default function SharePage() {
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [replayUrl, setReplayUrl] = useState<string>('')
   const canvasRef = useRef<HTMLDivElement>(null)
+  const replayPromiseRef = useRef<Promise<string | null> | null>(null)
 
   const ready = shown >= lines.length
   const origin =
@@ -62,25 +63,28 @@ export default function SharePage() {
   const shareUrl = replayUrl || origin
   const style: StyleKey = state?.style ?? 'savage'
 
-  // Create a server-side replay on mount so the QR/link points to a real /r/:id.
-  // Fallback to origin if the server refuses — UI still works.
-  useEffect(() => {
-    let cancelled = false
-    createReplay({ them, me, dialog: followUps, style })
+  // Create the server-side replay only when the user actually tries to share.
+  // Cached in a ref so we never double-POST across multiple share clicks.
+  const ensureReplayUrl = (): Promise<string | null> => {
+    if (replayUrl) return Promise.resolve(replayUrl)
+    if (replayPromiseRef.current) return replayPromiseRef.current
+    const p = createReplay({ them, me, dialog: followUps, style })
       .then((r) => {
-        if (cancelled) return
-        setReplayUrl(`${origin}${r.url}`)
+        const url = `${origin}${r.url}`
+        setReplayUrl(url)
         track('replay_create', { id: r.id })
+        return url
       })
       .catch((err) => {
-        if (err instanceof ApiError && err.code === 'rate_limited') return
-        /* swallow — QR still renders with origin */
+        replayPromiseRef.current = null // allow retry next click
+        if (err instanceof ApiError && err.code === 'rate_limited') {
+          toast.show('手速太快了，等一会儿再试', 'info')
+        }
+        return null
       })
-    return () => {
-      cancelled = true
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    replayPromiseRef.current = p
+    return p
+  }
 
   useEffect(() => {
     QRCode.toDataURL(shareUrl, {
@@ -131,14 +135,15 @@ export default function SharePage() {
 
   const onCopyLink = async () => {
     if (busy) return
-    if (!replayUrl) {
-      toast.show('链接生成中，请稍后再试', 'info')
-      return
-    }
     track('share_click', { target: 'copy_link' })
     setBusy('link')
     try {
-      await navigator.clipboard.writeText(replayUrl)
+      const url = await ensureReplayUrl()
+      if (!url) {
+        toast.show('链接生成失败，请稍后再试', 'error')
+        return
+      }
+      await navigator.clipboard.writeText(url)
       track('share_success', { target: 'copy_link' })
       toast.show('链接已复制，去群里粘贴吧', 'success')
     } catch {
@@ -153,15 +158,20 @@ export default function SharePage() {
     track('share_click', { target: 'share' })
     setBusy('share')
     try {
-      const blob = await toBlob(canvasRef.current, renderOptions)
+      // Kick off replay creation and screenshot in parallel — by the time the
+      // native share sheet opens, the URL is usually ready.
+      const [blob, url] = await Promise.all([
+        toBlob(canvasRef.current, renderOptions),
+        ensureReplayUrl(),
+      ])
       if (!blob) throw new Error('blob is null')
       const file = new File([blob], 'fight.png', { type: 'image/png' })
       const nav = navigator as Navigator & {
         canShare?: (data: ShareData) => boolean
       }
       if (nav.canShare?.({ files: [file] }) && navigator.share) {
-        const text = replayUrl
-          ? `看看这次我怎么把架吵赢的 ${replayUrl}`
+        const text = url
+          ? `看看这次我怎么把架吵赢的 ${url}`
           : '看看这次我怎么把架吵赢的'
         await navigator.share({
           files: [file],
@@ -304,15 +314,11 @@ export default function SharePage() {
 
         <button
           onClick={onCopyLink}
-          disabled={!ready || !replayUrl || busy !== null}
+          disabled={!ready || busy !== null}
           className="mt-3 w-full h-11 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-50 text-[13px]"
         >
           <Copy className="w-4 h-4" />
-          {busy === 'link'
-            ? '复制中…'
-            : replayUrl
-              ? '复制战绩链接（朋友点开就能看回放）'
-              : '链接生成中…'}
+          {busy === 'link' ? '生成中…' : '复制战绩链接（朋友点开就能看回放）'}
         </button>
 
         <p className="mt-3 text-center text-[11px] text-muted">

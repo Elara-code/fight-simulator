@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
-import { ApiError, getReplay, type Replay } from '../lib/api'
+import { useToast } from '../components/Toast'
+import { ApiError, getReplay, reportReplay, type Replay } from '../lib/api'
 import { track } from '../lib/analytics'
 
 type Line = { side: 'left' | 'right'; text: string }
@@ -9,10 +10,13 @@ type Line = { side: 'left' | 'right'; text: string }
 export default function ReplayPage() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
+  const toast = useToast()
   const [replay, setReplay] = useState<Replay | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [shown, setShown] = useState(0)
+  const [reported, setReported] = useState(false)
+  const [reporting, setReporting] = useState(false)
 
   useEffect(() => {
     if (!id) {
@@ -64,6 +68,29 @@ export default function ReplayPage() {
     nav('/', { state: { seedText: replay.them } })
   }
 
+  const onReport = async () => {
+    if (!replay || reported || reporting) return
+    if (!window.confirm('确认举报这条战绩？包含不当内容会被下架。')) return
+    setReporting(true)
+    try {
+      const res = await reportReplay(replay.id)
+      track('replay_report', { id: replay.id, removed: res.removed })
+      setReported(true)
+      toast.show(
+        res.removed ? '已下架，感谢你的反馈' : '已收到举报，我们会审核',
+        'success',
+      )
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'rate_limited') {
+        toast.show('举报太频繁，稍后再试', 'info')
+      } else {
+        toast.show('举报失败，请重试', 'error')
+      }
+    } finally {
+      setReporting(false)
+    }
+  }
+
   return (
     <div className="relative min-h-dvh">
       <div className="absolute inset-0 bg-grid opacity-40 [mask-image:radial-gradient(ellipse_at_top,black_40%,transparent_70%)]" />
@@ -77,7 +104,19 @@ export default function ReplayPage() {
           <Bolt className="w-4 h-4 text-accent" />
           <span className="text-sm font-heavy font-black">吵架模拟器</span>
         </button>
-        <span className="text-[11px] text-muted">战绩回放</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-muted">战绩回放</span>
+          {replay && (
+            <button
+              onClick={onReport}
+              disabled={reported || reporting}
+              className="text-[11px] text-muted/80 underline-offset-2 hover:underline disabled:opacity-60 active:scale-95"
+              aria-label="举报这条战绩"
+            >
+              {reported ? '已举报' : reporting ? '举报中…' : '举报'}
+            </button>
+          )}
+        </div>
       </header>
 
       <section className="relative px-4 pb-[140px]">

@@ -99,6 +99,21 @@ export async function getReplay(id: string): Promise<Replay> {
   return res.json()
 }
 
+export async function reportReplay(
+  id: string,
+): Promise<{ removed: boolean; reportCount: number }> {
+  const res = await fetch(`/api/replays/${encodeURIComponent(id)}/report`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    const message = typeof payload.message === 'string' ? payload.message : undefined
+    throw new ApiError(res.status, code, message ?? mapCodeToMessage(code, res.status))
+  }
+  return res.json()
+}
+
 function mapCodeToMessage(code: string, status: number): string {
   switch (code) {
     case 'rate_limited':

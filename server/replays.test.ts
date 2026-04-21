@@ -1,7 +1,24 @@
-import { describe, expect, it } from 'vitest'
-import { createReplay, getReplay, replayCount, ReplayInput } from './replays'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { resetDbForTests } from './db'
+import {
+  adminRemoveReplay,
+  createReplay,
+  getReplay,
+  replayCount,
+  ReplayInput,
+  reportReplay,
+} from './replays'
 
 describe('replay store', () => {
+  beforeEach(() => {
+    process.env.DATABASE_PATH = ':memory:'
+    resetDbForTests()
+  })
+  afterEach(() => {
+    resetDbForTests()
+    delete process.env.DATABASE_PATH
+  })
+
   it('accepts a valid payload and returns an id', () => {
     const r = createReplay({
       them: '你怎么又忘了',
@@ -63,7 +80,6 @@ describe('replay store', () => {
   })
 
   it('stores multiple entries independently', () => {
-    const before = replayCount()
     const a = createReplay({
       them: 'x',
       me: 'y',
@@ -77,6 +93,38 @@ describe('replay store', () => {
       style: 'sarcasm',
     })
     expect(a.id).not.toBe(b.id)
-    expect(replayCount()).toBe(before + 2)
+    expect(replayCount()).toBe(2)
+  })
+
+  it('report increments count and auto-removes at threshold', () => {
+    const r = createReplay({
+      them: 'x',
+      me: 'y',
+      dialog: [{ them: 'p', me: 'q' }],
+      style: 'savage',
+    })
+    const first = reportReplay(r.id)
+    expect(first).toMatchObject({ ok: true, removed: false, reportCount: 1 })
+    const second = reportReplay(r.id)
+    expect(second).toMatchObject({ ok: true, removed: false, reportCount: 2 })
+    const third = reportReplay(r.id)
+    expect(third).toMatchObject({ ok: true, removed: true, reportCount: 3 })
+    expect(getReplay(r.id)).toBeUndefined()
+  })
+
+  it('report on missing id returns not_found', () => {
+    expect(reportReplay('no-such-id')).toEqual({ ok: false, code: 'not_found' })
+  })
+
+  it('admin remove soft-deletes the replay', () => {
+    const r = createReplay({
+      them: 'x',
+      me: 'y',
+      dialog: [{ them: 'p', me: 'q' }],
+      style: 'savage',
+    })
+    expect(adminRemoveReplay(r.id)).toBe(true)
+    expect(getReplay(r.id)).toBeUndefined()
+    expect(adminRemoveReplay('no-such-id')).toBe(false)
   })
 })

@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
+import { getDb } from './db.js'
 import { StyleKey } from './generate.js'
 
 export const ReplayInput = z.object({
@@ -22,53 +23,109 @@ export type Replay = ReplayInput & {
   createdAt: number
 }
 
-const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-const MAX_ENTRIES = 5000
+const TTL_MS = 7 * 24 * 60 * 60 * 1000
+const AUTO_REMOVE_REPORT_THRESHOLD = 3
 
-const store = new Map<string, Replay>()
-
-function sweepExpired(now: number) {
-  for (const [id, r] of store) {
-    if (now - r.createdAt > TTL_MS) store.delete(id)
-  }
+type Row = {
+  id: string
+  them: string
+  me: string
+  dialog: string
+  style: ReplayInput['style']
+  created_at: number
+  report_count: number
+  removed: number
 }
 
-function evictOldestIfFull() {
-  if (store.size < MAX_ENTRIES) return
-  let oldestKey: string | null = null
-  let oldestTs = Infinity
-  for (const [id, r] of store) {
-    if (r.createdAt < oldestTs) {
-      oldestTs = r.createdAt
-      oldestKey = id
-    }
+function rowToReplay(row: Row): Replay {
+  return {
+    id: row.id,
+    them: row.them,
+    me: row.me,
+    dialog: JSON.parse(row.dialog),
+    style: row.style,
+    createdAt: row.created_at,
   }
-  if (oldestKey) store.delete(oldestKey)
 }
 
 function newId(): string {
   return randomBytes(8).toString('base64url')
 }
 
+function purgeExpired(now: number) {
+  getDb()
+    .prepare('DELETE FROM replays WHERE created_at < ?')
+    .run(now - TTL_MS)
+}
+
 export function createReplay(input: ReplayInput): Replay {
   const now = Date.now()
-  sweepExpired(now)
-  evictOldestIfFull()
-  const replay: Replay = { ...input, id: newId(), createdAt: now }
-  store.set(replay.id, replay)
-  return replay
+  purgeExpired(now)
+  const id = newId()
+  getDb()
+    .prepare(
+      `INSERT INTO replays (id, them, me, dialog, style, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, input.them, input.me, JSON.stringify(input.dialog), input.style, now)
+  return { ...input, id, createdAt: now }
 }
 
 export function getReplay(id: string): Replay | undefined {
-  const r = store.get(id)
-  if (!r) return undefined
-  if (Date.now() - r.createdAt > TTL_MS) {
-    store.delete(id)
+  const row = getDb()
+    .prepare(
+      `SELECT id, them, me, dialog, style, created_at, report_count, removed
+       FROM replays WHERE id = ?`,
+    )
+    .get(id) as Row | undefined
+  if (!row) return undefined
+  if (row.removed === 1) return undefined
+  if (Date.now() - row.created_at > TTL_MS) {
+    getDb().prepare('DELETE FROM replays WHERE id = ?').run(id)
     return undefined
   }
-  return r
+  return rowToReplay(row)
+}
+
+type ReportResult =
+  | { ok: true; removed: boolean; reportCount: number }
+  | { ok: false; code: 'not_found' }
+
+export function reportReplay(id: string): ReportResult {
+  const db = getDb()
+  const row = db
+    .prepare(
+      'SELECT report_count, removed FROM replays WHERE id = ?',
+    )
+    .get(id) as { report_count: number; removed: number } | undefined
+  if (!row) return { ok: false, code: 'not_found' }
+
+  const nextCount = row.report_count + 1
+  const shouldAutoRemove =
+    row.removed === 0 && nextCount >= AUTO_REMOVE_REPORT_THRESHOLD
+  db.prepare(
+    `UPDATE replays
+     SET report_count = ?, removed = ?
+     WHERE id = ?`,
+  ).run(nextCount, shouldAutoRemove ? 1 : row.removed, id)
+
+  return {
+    ok: true,
+    removed: shouldAutoRemove || row.removed === 1,
+    reportCount: nextCount,
+  }
+}
+
+export function adminRemoveReplay(id: string): boolean {
+  const info = getDb()
+    .prepare('UPDATE replays SET removed = 1 WHERE id = ?')
+    .run(id)
+  return info.changes > 0
 }
 
 export function replayCount(): number {
-  return store.size
+  const row = getDb()
+    .prepare('SELECT COUNT(*) AS n FROM replays WHERE removed = 0')
+    .get() as { n: number }
+  return row.n
 }

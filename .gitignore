@@ -10,3 +10,8 @@ dist-ssr
 .env.*.local
 .vscode
 .idea
+data/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
