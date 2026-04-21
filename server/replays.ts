@@ -15,11 +15,21 @@ export const ReplayInput = z.object({
     )
     .max(4),
   style: StyleKey,
+  isPublic: z.boolean().optional(),
 })
 export type ReplayInput = z.infer<typeof ReplayInput>
 
-export type Replay = ReplayInput & {
+export type Replay = Omit<ReplayInput, 'isPublic'> & {
   id: string
+  createdAt: number
+  isPublic: boolean
+}
+
+export type FeedItem = {
+  id: string
+  them: string
+  me: string
+  style: Replay['style']
   createdAt: number
 }
 
@@ -35,6 +45,7 @@ type Row = {
   created_at: number
   report_count: number
   removed: number
+  is_public: number
 }
 
 function rowToReplay(row: Row): Replay {
@@ -45,6 +56,7 @@ function rowToReplay(row: Row): Replay {
     dialog: JSON.parse(row.dialog),
     style: row.style,
     createdAt: row.created_at,
+    isPublic: row.is_public === 1,
   }
 }
 
@@ -62,19 +74,36 @@ export function createReplay(input: ReplayInput): Replay {
   const now = Date.now()
   purgeExpired(now)
   const id = newId()
+  const isPublic = input.isPublic ? 1 : 0
   getDb()
     .prepare(
-      `INSERT INTO replays (id, them, me, dialog, style, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO replays (id, them, me, dialog, style, created_at, is_public)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, input.them, input.me, JSON.stringify(input.dialog), input.style, now)
-  return { ...input, id, createdAt: now }
+    .run(
+      id,
+      input.them,
+      input.me,
+      JSON.stringify(input.dialog),
+      input.style,
+      now,
+      isPublic,
+    )
+  return {
+    them: input.them,
+    me: input.me,
+    dialog: input.dialog,
+    style: input.style,
+    id,
+    createdAt: now,
+    isPublic: isPublic === 1,
+  }
 }
 
 export function getReplay(id: string): Replay | undefined {
   const row = getDb()
     .prepare(
-      `SELECT id, them, me, dialog, style, created_at, report_count, removed
+      `SELECT id, them, me, dialog, style, created_at, report_count, removed, is_public
        FROM replays WHERE id = ?`,
     )
     .get(id) as Row | undefined
@@ -128,4 +157,30 @@ export function replayCount(): number {
     .prepare('SELECT COUNT(*) AS n FROM replays WHERE removed = 0')
     .get() as { n: number }
   return row.n
+}
+
+export function listPublicFeed(limit = 30): FeedItem[] {
+  const now = Date.now()
+  const rows = getDb()
+    .prepare(
+      `SELECT id, them, me, style, created_at
+       FROM replays
+       WHERE is_public = 1 AND removed = 0 AND created_at > ?
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(now - TTL_MS, limit) as {
+    id: string
+    them: string
+    me: string
+    style: Replay['style']
+    created_at: number
+  }[]
+  return rows.map((r) => ({
+    id: r.id,
+    them: r.them,
+    me: r.me,
+    style: r.style,
+    createdAt: r.created_at,
+  }))
 }

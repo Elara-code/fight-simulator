@@ -54,6 +54,7 @@ export default function SharePage() {
   const [busy, setBusy] = useState<'save' | 'share' | 'link' | null>(null)
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [replayUrl, setReplayUrl] = useState<string>('')
+  const [wantsPublic, setWantsPublic] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const replayPromiseRef = useRef<Promise<string | null> | null>(null)
 
@@ -65,14 +66,21 @@ export default function SharePage() {
 
   // Create the server-side replay only when the user actually tries to share.
   // Cached in a ref so we never double-POST across multiple share clicks.
+  // Public flag is captured at creation time — flipping it after creation is a no-op.
   const ensureReplayUrl = (): Promise<string | null> => {
     if (replayUrl) return Promise.resolve(replayUrl)
     if (replayPromiseRef.current) return replayPromiseRef.current
-    const p = createReplay({ them, me, dialog: followUps, style })
+    const p = createReplay({
+      them,
+      me,
+      dialog: followUps,
+      style,
+      isPublic: wantsPublic,
+    })
       .then((r) => {
         const url = `${origin}${r.url}`
         setReplayUrl(url)
-        track('replay_create', { id: r.id })
+        track('replay_create', { id: r.id, public: wantsPublic })
         return url
       })
       .catch((err) => {
@@ -311,6 +319,39 @@ export default function SharePage() {
             {busy === 'share' ? '准备中…' : '发给朋友'}
           </button>
         </div>
+
+        <label
+          className={`mt-4 flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 ${
+            replayUrl ? 'opacity-60' : 'active:scale-[0.99]'
+          }`}
+        >
+          <button
+            type="button"
+            role="switch"
+            aria-checked={wantsPublic}
+            disabled={!!replayUrl || busy !== null}
+            onClick={() => setWantsPublic((v) => !v)}
+            className={`relative shrink-0 w-10 h-6 rounded-full transition-colors ${
+              wantsPublic ? 'bg-primary' : 'bg-white/15'
+            } disabled:cursor-not-allowed`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                wantsPublic ? 'translate-x-4' : 'translate-x-0'
+              }`}
+            />
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-heavy font-black text-white/95">
+              上榜单（让别人看到你这一局）
+            </div>
+            <div className="text-[11px] text-muted mt-0.5 leading-tight">
+              {replayUrl
+                ? '链接已生成，本局是否公开已锁定。重开一局可改'
+                : '打开后这条战绩会出现在公共榜单，关掉就只给你自己看'}
+            </div>
+          </div>
+        </label>
 
         <button
           onClick={onCopyLink}

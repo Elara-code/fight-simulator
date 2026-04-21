@@ -19,6 +19,8 @@ type EventName =
   | 'train_end'
   | 'train_retry'
   | 'train_save'
+  | 'feed_view'
+  | 'feed_item_click'
 
 type PostHogCapture = (event: string, props?: Record<string, unknown>) => void
 

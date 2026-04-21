@@ -67,11 +67,31 @@ export type ReplayPayload = {
   me: string
   dialog: { them: string; me: string }[]
   style: StyleKey
+  isPublic?: boolean
 }
 
-export type Replay = ReplayPayload & {
+export type Replay = Omit<ReplayPayload, 'isPublic'> & {
   id: string
   createdAt: number
+}
+
+export type FeedItem = {
+  id: string
+  them: string
+  me: string
+  style: StyleKey
+  createdAt: number
+}
+
+export async function listFeed(): Promise<FeedItem[]> {
+  const res = await fetch('/api/replays/top')
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    throw new ApiError(res.status, code, mapCodeToMessage(code, res.status))
+  }
+  const body = (await res.json()) as { items: FeedItem[] }
+  return body.items
 }
 
 export async function createReplay(body: ReplayPayload): Promise<{ id: string; url: string }> {

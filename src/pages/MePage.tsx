@@ -33,6 +33,7 @@ export default function MePage() {
 
         <div className="mt-4 rounded-2xl bg-card/60 border border-white/5 divide-y divide-white/5 overflow-hidden">
           <Row label="🥊 训练模式" value="练一练" onClick={() => nav('/train')} />
+          <Row label="🏆 吵架榜" value="看别人怎么吵" onClick={() => nav('/feed')} />
           <Row label="历史战绩" value="查看" onClick={() => nav('/history')} />
           <Row label="反馈问题" value="GitHub Issues" href="https://github.com/elara-code/fight-simulator/issues" />
           <Row label="关于" value="v0.1" />

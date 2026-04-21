@@ -21,6 +21,7 @@ import {
   adminRemoveReplay,
   createReplay,
   getReplay,
+  listPublicFeed,
   reportReplay,
 } from './replays.js'
 import { screenUserInput } from './safety.js'
@@ -228,6 +229,11 @@ app.post('/api/replays', replayWriteLimiter, (req, res) => {
   }
   const replay = createReplay(parsed.data)
   res.status(201).json({ id: replay.id, url: `/r/${replay.id}` })
+})
+
+app.get('/api/replays/top', (_req, res) => {
+  const feed = listPublicFeed(30)
+  res.json({ items: feed })
 })
 
 app.get('/api/replays/:id', (req, res) => {

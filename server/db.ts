@@ -23,11 +23,23 @@ export function getDb(): Database.Database {
       style TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       report_count INTEGER NOT NULL DEFAULT 0,
-      removed INTEGER NOT NULL DEFAULT 0
+      removed INTEGER NOT NULL DEFAULT 0,
+      is_public INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_replays_created_at ON replays(created_at);
     CREATE INDEX IF NOT EXISTS idx_replays_removed ON replays(removed);
+    CREATE INDEX IF NOT EXISTS idx_replays_public ON replays(is_public, removed, created_at);
   `)
+
+  // Idempotent migration for pre-existing installs that predate is_public.
+  const cols = db
+    .prepare('PRAGMA table_info(replays)')
+    .all() as { name: string }[]
+  if (!cols.some((c) => c.name === 'is_public')) {
+    db.exec(
+      'ALTER TABLE replays ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0',
+    )
+  }
 
   dbInstance = db
   return db

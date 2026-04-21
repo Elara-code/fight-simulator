@@ -4,6 +4,7 @@ import {
   adminRemoveReplay,
   createReplay,
   getReplay,
+  listPublicFeed,
   replayCount,
   ReplayInput,
   reportReplay,
@@ -126,5 +127,74 @@ describe('replay store', () => {
     expect(adminRemoveReplay(r.id)).toBe(true)
     expect(getReplay(r.id)).toBeUndefined()
     expect(adminRemoveReplay('no-such-id')).toBe(false)
+  })
+
+  it('defaults isPublic to false and stores it when set', () => {
+    const priv = createReplay({
+      them: 'a',
+      me: 'b',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'savage',
+    })
+    expect(priv.isPublic).toBe(false)
+    const pub = createReplay({
+      them: 'a',
+      me: 'b',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'savage',
+      isPublic: true,
+    })
+    expect(pub.isPublic).toBe(true)
+    const roundTrip = getReplay(pub.id)
+    expect(roundTrip?.isPublic).toBe(true)
+  })
+
+  it('feed only includes public, non-removed, non-expired entries', () => {
+    createReplay({
+      them: 'private',
+      me: 'x',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'savage',
+    })
+    const pub = createReplay({
+      them: 'public',
+      me: 'y',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'logic',
+      isPublic: true,
+    })
+    const reported = createReplay({
+      them: 'spammy',
+      me: 'z',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'sarcasm',
+      isPublic: true,
+    })
+    reportReplay(reported.id)
+    reportReplay(reported.id)
+    reportReplay(reported.id) // auto-removed at 3
+
+    const feed = listPublicFeed()
+    expect(feed.map((f) => f.id)).toEqual([pub.id])
+  })
+
+  it('feed orders newest first', async () => {
+    const a = createReplay({
+      them: 'a',
+      me: 'x',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'savage',
+      isPublic: true,
+    })
+    await new Promise((r) => setTimeout(r, 5))
+    const b = createReplay({
+      them: 'b',
+      me: 'y',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'logic',
+      isPublic: true,
+    })
+    const feed = listPublicFeed()
+    expect(feed.map((f) => f.id)).toEqual([b.id, a.id])
   })
 })
