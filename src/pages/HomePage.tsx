@@ -479,10 +479,6 @@ export default function HomePage() {
           <Bolt className="w-5 h-5" />
           帮我吵回来
         </button>
-
-        <p className="mt-3 text-center text-[11px] text-muted">
-          点击 · 按钮缩→弹 + 闪电划过 · 进入「正在帮你想更狠的回复」
-        </p>
       </section>
 
       {generating && <GeneratingOverlay />}

@@ -362,9 +362,9 @@ export default function SharePage() {
           {busy === 'link' ? '生成中…' : '复制战绩链接（朋友点开就能看回放）'}
         </button>
 
-        <p className="mt-3 text-center text-[11px] text-muted">
-          {ready ? '保存成 PNG · 或调起系统分享发给好友' : '气泡展开中…'}
-        </p>
+        {!ready && (
+          <p className="mt-3 text-center text-[11px] text-muted">气泡展开中…</p>
+        )}
       </section>
 
       {fireworks && (

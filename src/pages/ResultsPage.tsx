@@ -403,32 +403,32 @@ export default function ResultsPage() {
 
       {/* Bottom actions */}
       <div className="sticky bottom-[92px] mt-6 px-4">
-        <div className="rounded-2xl bg-card/85 backdrop-blur border border-white/5 p-3 flex items-center gap-2 shadow-card">
+        <div className="rounded-2xl bg-card/85 backdrop-blur border border-white/5 p-3 flex items-center gap-1.5 shadow-card">
           <button
             onClick={onCopyOne}
             disabled={loading}
-            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-            title="复制主反击"
+            aria-label="复制主反击"
+            className="h-12 w-12 shrink-0 rounded-xl border border-white/10 bg-white/5 text-white/90 grid place-items-center active:scale-95 disabled:opacity-50"
+            title={copied === 'one' ? '已复制' : '复制主反击'}
           >
             <Copy className="w-4 h-4" />
-            {copied === 'one' ? '已复制' : '复制'}
           </button>
           <button
             onClick={onCopyAll}
             disabled={loading}
-            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50 text-[13px]"
-            title="复制对方+你的整段对话"
+            className="h-12 shrink-0 px-2.5 rounded-xl border border-white/10 bg-white/5 text-white/90 active:scale-95 disabled:opacity-50 text-[12px] whitespace-nowrap"
+            title="复制对方 + 你的整段对话"
           >
-            {copied === 'all' ? '已复制' : '复制全段'}
+            {copied === 'all' ? '已复制' : '全段'}
           </button>
           <button
             onClick={() => onRegenerate()}
             disabled={loading}
-            className="h-12 px-3 rounded-xl border border-white/10 bg-white/5 text-white/90 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-            title="再来一句"
+            aria-label="再来一句"
+            className="h-12 w-12 shrink-0 rounded-xl border border-white/10 bg-white/5 text-white/90 grid place-items-center active:scale-95 disabled:opacity-50"
+            title={loading ? '生成中…' : '再来一句'}
           >
             <Refresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? '生成中…' : '再来一句'}
           </button>
           <button
             onClick={() =>
@@ -437,9 +437,9 @@ export default function ResultsPage() {
               })
             }
             disabled={loading}
-            className="flex-1 h-12 rounded-xl bg-cta-gradient text-white font-heavy font-black flex items-center justify-center gap-1.5 shadow-glow active:scale-[0.98] disabled:opacity-60"
+            className="flex-1 h-12 rounded-xl bg-cta-gradient text-white font-heavy font-black flex items-center justify-center gap-1.5 shadow-glow active:scale-[0.98] disabled:opacity-60 whitespace-nowrap"
           >
-            <Bolt className="w-5 h-5" />
+            <Bolt className="w-5 h-5 shrink-0" />
             生成截图
           </button>
         </div>
