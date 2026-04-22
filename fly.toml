@@ -1,0 +1,56 @@
+# Fly.io deployment config
+# ------------------------
+# - Primary region: hkg (Hong Kong) — lowest latency for mainland China +
+#   Asian traffic. Change to sjc/nrt/iad if your audience is elsewhere.
+# - Single machine w/ a 1GiB volume for SQLite. Stateless scaling needs
+#   a different DB first.
+# - auto_stop = suspend: the VM sleeps after ~5 min of no traffic and
+#   resumes on next request (~500ms cold start). Keeps us on free tier.
+#   Flip to "off" once there's real traffic to avoid the first-request lag.
+
+app = "fight-simulator"
+primary_region = "hkg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8787"
+  DATABASE_PATH = "/data/fightsim.sqlite"
+  # PUBLIC_ORIGIN and CORS_ORIGINS are set after the app domain is known:
+  #   flyctl secrets set PUBLIC_ORIGIN=https://fight-simulator.fly.dev \
+  #                      CORS_ORIGINS=https://fight-simulator.fly.dev
+
+[[mounts]]
+  source = "fightsim_data"
+  destination = "/data"
+  # Tip: create the volume first with
+  #   flyctl volumes create fightsim_data --region hkg --size 1
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    # Upstream DeepSeek calls are the bottleneck — keep concurrency modest
+    # so one slow request doesn't stall dozens of others.
+    soft_limit = 20
+    hard_limit = 30
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

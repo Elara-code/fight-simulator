@@ -105,6 +105,71 @@ DEEPSEEK_API_KEY=sk-xxxxx PUBLIC_ORIGIN=https://your-domain.com npm run start:ap
 | `REPLAY_WRITES_PER_MINUTE` | `20` | 每 IP 存 replay 限流 |
 | `ADMIN_TOKEN` | 未设则禁用管理 API | `DELETE /api/replays/:id` 用 |
 | `SENTRY_DSN` | 未设则禁用 | 后端错误上报 |
+| `DEEPSEEK_MAX_RETRIES` | `2` | 5xx/429/网络错误的自动重试次数 |
+| `DEEPSEEK_TIMEOUT_MS` | `30000` | 单次 DeepSeek 调用超时（毫秒） |
+| `SHUTDOWN_TIMEOUT_MS` | `10000` | SIGTERM 时 drain 老请求的超时（毫秒） |
+| `HOST` | `0.0.0.0` | Express 绑定地址（Fly / IPv6 场景需保持默认） |
+
+### Fly.io 部署
+
+`fly.toml` 已经配好，主区域 `hkg`（香港），SQLite 挂 `/data` volume。
+
+首次上线 5 步：
+
+```bash
+# 1. 装 flyctl（一次性）
+curl -L https://fly.io/install.sh | sh
+
+# 2. 登录（浏览器自动打开）
+flyctl auth login
+
+# 3. 创建 app（不要部署，只写配置）
+flyctl launch --no-deploy --copy-config --name fight-simulator
+
+# 4. 创建持久化 volume 给 SQLite（1 GiB 够跑很久）
+flyctl volumes create fightsim_data --region hkg --size 1
+
+# 5. 把密钥灌进去（这些会加密存在 Fly 侧，不要写进 fly.toml）
+flyctl secrets set \
+  DEEPSEEK_API_KEY=sk-xxxxxxxxxxxx \
+  PUBLIC_ORIGIN=https://fight-simulator.fly.dev \
+  CORS_ORIGINS=https://fight-simulator.fly.dev
+
+# （可选）Sentry / PostHog / 管理员令牌
+flyctl secrets set SENTRY_DSN=... ADMIN_TOKEN=... VITE_POSTHOG_KEY=...
+
+# 6. 部署
+flyctl deploy
+```
+
+部署完打开 `https://fight-simulator.fly.dev` 就能看到。后续改代码重跑
+`flyctl deploy` 即可。
+
+常用运维命令：
+
+```bash
+flyctl logs                        # 实时日志
+flyctl ssh console                 # SSH 进 VM
+flyctl status                      # 实例状态
+flyctl secrets list                # 列出已设密钥（不显示值）
+flyctl scale count 1               # 固定 1 台（关掉 auto-stop）
+flyctl volumes snapshots list fightsim_data  # SQLite 备份快照
+```
+
+**SQLite 备份**：Fly 会每日自动给 volume 做快照（保留 5 天），
+想手动恢复：`flyctl volumes snapshots create fightsim_data` → 新建 volume
+from snapshot → 重新 `flyctl deploy`。生产量大的话建议加 [litestream]
+(https://litestream.io/)。
+
+**绑自定义域名**：
+
+```bash
+flyctl certs add fight.yourdomain.com
+# DNS 加一条 CNAME 指向 fight-simulator.fly.dev
+```
+
+设完记得用 `flyctl secrets set` 更新 `PUBLIC_ORIGIN` 和 `CORS_ORIGINS`
+指向新域名。
 
 ## CI
 

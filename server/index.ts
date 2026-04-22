@@ -366,8 +366,12 @@ if (HAS_DIST) {
 }
 
 const port = Number(process.env.PORT) || 8787
-const server = app.listen(port, () => {
+// Bind to all interfaces (IPv4 + IPv6). Fly.io's proxy reaches the VM over
+// IPv6 so leaving Node's default can make the app look "down" from outside.
+const host = process.env.HOST || '0.0.0.0'
+const server = app.listen(port, host, () => {
   log.info('api_listening', {
+    host,
     port,
     hasKey: !!process.env.DEEPSEEK_API_KEY,
     dailyCap,
