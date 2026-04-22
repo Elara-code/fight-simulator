@@ -256,6 +256,7 @@ function SetupView({
           onChange={(e) => setSetup({ ...setup, opening: e.target.value })}
           rows={3}
           placeholder="把对方说的那句话贴进来…"
+          aria-label="对方的开场白"
           className="mt-3 w-full resize-none rounded-xl bg-black/30 border border-white/10 p-3 text-[14px] placeholder:text-muted/80 outline-none"
         />
       </div>
@@ -355,6 +356,7 @@ function ComposeBar({
           rows={1}
           placeholder={remaining > 0 ? '打出你的反击…（Enter 发送）' : '已达上限'}
           disabled={remaining <= 0}
+          aria-label="我的回击"
           className="flex-1 resize-none bg-transparent text-[14px] placeholder:text-muted/80 outline-none max-h-28 py-2 px-2"
         />
         <button
