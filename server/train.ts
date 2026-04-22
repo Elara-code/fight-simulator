@@ -1,5 +1,5 @@
-import OpenAI from 'openai'
 import { z } from 'zod'
+import { buildDeepSeekClient, getDeepSeekModel } from './deepseek.js'
 import { Relation } from './generate.js'
 
 export const TrainMessage = z.object({
@@ -49,22 +49,9 @@ const SYSTEM_PROMPT = `你是「吵架模拟器 · 训练模式」里的对手 A
 1) 继续对吵：{ "ended": false, "them": "你作为对方的下一句话" }
 2) 对话结束：{ "ended": true, "them": "可选的最后一句话，可以空字符串", "score": 整数, "verdict": "win"|"draw"|"lose", "feedback": "一句中文点评" }`
 
-function buildClient(): OpenAI {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    const err = new Error('DEEPSEEK_API_KEY is not set') as Error & { code?: string }
-    err.code = 'NO_API_KEY'
-    throw err
-  }
-  return new OpenAI({
-    apiKey,
-    baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
-  })
-}
-
 export async function trainTurn(req: TrainRequest): Promise<TurnResponse> {
-  const client = buildClient()
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+  const client = buildDeepSeekClient()
+  const model = getDeepSeekModel()
 
   const userTurns = req.history.filter((m) => m.role === 'me').length
   const transcript = req.history

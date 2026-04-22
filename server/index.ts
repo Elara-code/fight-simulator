@@ -17,6 +17,7 @@ import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 import OpenAI from 'openai'
 import { ZodError } from 'zod'
+import { closeDb } from './db.js'
 import { GenerateRequest, generateReply } from './generate.js'
 import { log } from './logger.js'
 import { renderDefaultShell, renderReplayHtml } from './og.js'
@@ -365,7 +366,7 @@ if (HAS_DIST) {
 }
 
 const port = Number(process.env.PORT) || 8787
-app.listen(port, () => {
+const server = app.listen(port, () => {
   log.info('api_listening', {
     port,
     hasKey: !!process.env.DEEPSEEK_API_KEY,
@@ -375,3 +376,40 @@ app.listen(port, () => {
     staticDist: HAS_DIST,
   })
 })
+
+// Graceful shutdown: stop accepting new connections, let in-flight requests
+// drain, close the SQLite handle, then exit. Bounded by SHUTDOWN_TIMEOUT so a
+// wedged client can't block a deploy rollover forever.
+const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS) || 10_000
+let shuttingDown = false
+
+function gracefulShutdown(signal: string) {
+  if (shuttingDown) return
+  shuttingDown = true
+  log.info('shutdown_start', { signal })
+
+  const forceExit = setTimeout(() => {
+    log.warn('shutdown_forced', { timeoutMs: SHUTDOWN_TIMEOUT_MS })
+    closeDb()
+    process.exit(1)
+  }, SHUTDOWN_TIMEOUT_MS)
+  forceExit.unref()
+
+  server.close((err) => {
+    if (err) {
+      log.error('shutdown_server_close_error', { err: err.message })
+    }
+    try {
+      closeDb()
+    } catch (dbErr) {
+      log.error('shutdown_db_close_error', {
+        err: dbErr instanceof Error ? dbErr.message : String(dbErr),
+      })
+    }
+    log.info('shutdown_complete')
+    process.exit(err ? 1 : 0)
+  })
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => gracefulShutdown('SIGINT'))

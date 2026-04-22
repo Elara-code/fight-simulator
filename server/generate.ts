@@ -1,5 +1,5 @@
-import OpenAI from 'openai'
 import { z } from 'zod'
+import { buildDeepSeekClient, getDeepSeekModel } from './deepseek.js'
 import { log } from './logger.js'
 import { screenModelOutput } from './safety.js'
 
@@ -88,24 +88,9 @@ const SYSTEM_PROMPT = `你是「吵架模拟器」的反击生成器。用户贴
 }
 dialog 数组长度 1 到 2。所有字段都不能为空字符串。`
 
-function buildClient(): OpenAI {
-  const apiKey = process.env.DEEPSEEK_API_KEY
-  if (!apiKey) {
-    const err = new Error('DEEPSEEK_API_KEY is not set') as Error & {
-      code?: string
-    }
-    err.code = 'NO_API_KEY'
-    throw err
-  }
-  return new OpenAI({
-    apiKey,
-    baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
-  })
-}
-
 export async function generateReply(input: GenerateRequest): Promise<Reply> {
-  const client = buildClient()
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat'
+  const client = buildDeepSeekClient()
+  const model = getDeepSeekModel()
 
   const hintLine = input.hint ? `\n【本次额外要求】${HINT_DESC[input.hint]}` : ''
   const userPrompt = `【对方原话】

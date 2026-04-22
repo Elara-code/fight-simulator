@@ -52,3 +52,11 @@ export function resetDbForTests() {
     dbInstance = null
   }
 }
+
+// Called during graceful shutdown. Safe to call even if db was never opened.
+export function closeDb() {
+  if (dbInstance) {
+    dbInstance.close()
+    dbInstance = null
+  }
+}
