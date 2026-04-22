@@ -333,11 +333,12 @@ export default function ResultsPage() {
         </div>
       )}
 
-      {/* Conversation — key 强制每次换风格/重新生成都重播卡片爆出动画 */}
+      {/* Conversation — key on content only so loading state doesn't remount,
+          but a real reply swap still replays the cardBoom animation. */}
       <section
-        key={`${style}-${loading ? 'l' : reply.me.slice(0, 6)}`}
+        key={reply.me.slice(0, 12)}
         className={`relative px-4 mt-3 space-y-3 transition-opacity duration-300 ${
-          loading ? 'opacity-60 animate-pulse' : 'opacity-100'
+          loading ? 'opacity-40' : 'opacity-100'
         }`}
       >
         <div style={{ animationDelay: '40ms' }} className="animate-cardBoom">
@@ -354,16 +355,7 @@ export default function ResultsPage() {
           <div className="relative rounded-2xl p-[2px] bg-cta-gradient shadow-glow">
             <div className="rounded-2xl bg-card/90 px-3 py-2">
               <ChatBubble side="right" tone="primary" label="你（反击）">
-                {loading ? (
-                  <div className="flex items-center gap-2">
-                    <TypingDots />
-                    <span className="text-[12px] text-white/60">
-                      正在想一句更狠的…
-                    </span>
-                  </div>
-                ) : (
-                  <div className="whitespace-pre-line">{reply.me}</div>
-                )}
+                <div className="whitespace-pre-line">{reply.me}</div>
               </ChatBubble>
             </div>
           </div>
@@ -393,6 +385,21 @@ export default function ResultsPage() {
           </div>
         ))}
       </section>
+
+      {/* Loading overlay: hovers above the faded previous conversation so
+          the layout doesn't jump when switching styles. */}
+      {loading && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-[188px] px-4 flex justify-center"
+          aria-live="polite"
+          aria-label="正在生成新的反击"
+        >
+          <div className="rounded-2xl bg-card/95 border border-white/10 shadow-glow px-4 py-3 flex items-center gap-3">
+            <TypingDots />
+            <span className="text-[12px] text-white/80">正在想一句更狠的…</span>
+          </div>
+        </div>
+      )}
 
       {/* Bottom actions */}
       <div className="sticky bottom-[92px] mt-6 px-4">
