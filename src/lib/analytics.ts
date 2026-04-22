@@ -21,6 +21,7 @@ type EventName =
   | 'train_save'
   | 'feed_view'
   | 'feed_item_click'
+  | 'web_vitals'
 
 type PostHogCapture = (event: string, props?: Record<string, unknown>) => void
 
@@ -65,4 +66,35 @@ export function track(event: EventName, props?: Record<string, unknown>) {
   if (import.meta.env.VITE_POSTHOG_KEY) {
     buffered.push({ event, props })
   }
+}
+
+// Web Vitals — lazy-import so the measurement lib doesn't tax the main
+// bundle. Each metric fires once its measurement stabilizes (LCP at first
+// input, CLS on visibility change, etc.) and is forwarded to PostHog.
+export function initWebVitals() {
+  if (typeof window === 'undefined') return
+  import('web-vitals')
+    .then(({ onCLS, onINP, onLCP, onFCP, onTTFB }) => {
+      const send = (metric: {
+        name: string
+        value: number
+        rating: string
+        navigationType?: string
+      }) => {
+        track('web_vitals', {
+          metric: metric.name,
+          value: Math.round(metric.value * 1000) / 1000,
+          rating: metric.rating,
+          nav: metric.navigationType,
+        })
+      }
+      onCLS(send)
+      onINP(send)
+      onLCP(send)
+      onFCP(send)
+      onTTFB(send)
+    })
+    .catch(() => {
+      /* best-effort — don't let a measurement failure break anything */
+    })
 }
