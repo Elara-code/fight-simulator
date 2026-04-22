@@ -25,7 +25,7 @@ describe('og html renderer', () => {
   it('emits twitter card tags', () => {
     const html = renderReplayHtml(baseReplay, 'https://x.y')
     expect(html).toMatch(/<meta name="twitter:card" content="summary_large_image"/)
-    expect(html).toMatch(/<meta name="twitter:image" content="https:\/\/x\.y\/og-cover\.svg"/)
+    expect(html).toMatch(/<meta name="twitter:image" content="https:\/\/x\.y\/og-cover\.png"/)
   })
 
   it('escapes HTML in user-supplied text', () => {

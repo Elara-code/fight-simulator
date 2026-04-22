@@ -59,7 +59,7 @@ export function renderReplayHtml(replay: Replay, origin: string): string {
   const title = `${styleLabel} · 吵架回放`
   const description = `对方：${them}｜我：${me}`
   const url = `${origin}/r/${replay.id}`
-  const image = `${origin}/og-cover.svg`
+  const image = `${origin}/og-cover.png`
 
   const tags = [
     `<title>${escapeHtml(title)}</title>`,

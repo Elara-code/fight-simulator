@@ -3,8 +3,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# better-sqlite3 needs build tools on alpine
-RUN apk add --no-cache python3 make g++
+# better-sqlite3 needs build tools; font-noto-cjk lets sharp rasterize the
+# OG cover SVG with CJK glyphs at build time.
+RUN apk add --no-cache python3 make g++ font-noto-cjk fontconfig \
+  && fc-cache -f
 
 COPY package.json package-lock.json ./
 RUN npm ci
