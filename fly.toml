@@ -1,7 +1,8 @@
 # Fly.io deployment config
 # ------------------------
-# - Primary region: hkg (Hong Kong) — lowest latency for mainland China +
-#   Asian traffic. Change to sjc/nrt/iad if your audience is elsewhere.
+# - Primary region: nrt (Tokyo) — Fly deprecated HKG in 2023, nrt is now
+#   the best Asian region for mainland China (40-80ms depending on ISP).
+#   Alternatives: sin (Singapore, 70-90ms) or sjc (US West, 180ms+).
 # - Single machine w/ a 1GiB volume for SQLite. Stateless scaling needs
 #   a different DB first.
 # - auto_stop = suspend: the VM sleeps after ~5 min of no traffic and
@@ -9,7 +10,7 @@
 #   Flip to "off" once there's real traffic to avoid the first-request lag.
 
 app = "fight-simulator"
-primary_region = "hkg"
+primary_region = "nrt"
 
 [build]
   dockerfile = "Dockerfile"

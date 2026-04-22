@@ -112,7 +112,8 @@ DEEPSEEK_API_KEY=sk-xxxxx PUBLIC_ORIGIN=https://your-domain.com npm run start:ap
 
 ### Fly.io 部署
 
-`fly.toml` 已经配好，主区域 `hkg`（香港），SQLite 挂 `/data` volume。
+`fly.toml` 已经配好，主区域 `nrt`（东京，Fly 2023 年关掉了 HKG），
+对中国大陆延迟 40-80ms，SQLite 挂 `/data` volume。
 
 首次上线 5 步：
 
@@ -127,7 +128,7 @@ flyctl auth login
 flyctl launch --no-deploy --copy-config --name fight-simulator
 
 # 4. 创建持久化 volume 给 SQLite（1 GiB 够跑很久）
-flyctl volumes create fightsim_data --region hkg --size 1
+flyctl volumes create fightsim_data --region nrt --size 1
 
 # 5. 把密钥灌进去（这些会加密存在 Fly 侧，不要写进 fly.toml）
 flyctl secrets set \
