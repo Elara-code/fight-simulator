@@ -58,3 +58,55 @@ npm run dev
 - 后端 Express — http://localhost:8787（Vite 代理 `/api` → 8787）
 
 打开 http://localhost:5173 即可。
+
+## Deployment
+
+生产环境是 **单进程 Express**：Express 既服务 `/api/*`，又托管 `dist/` 的
+SPA，并在 `/r/:id` 注入动态 OG meta。不需要额外的 nginx / CDN。
+
+### Docker（推荐）
+
+```bash
+docker build -t fight-simulator .
+docker run -d --name fightsim \
+  -p 8787:8787 \
+  -v fightsim-data:/data \
+  -e DEEPSEEK_API_KEY=sk-xxxxx \
+  -e PUBLIC_ORIGIN=https://your-domain.com \
+  -e CORS_ORIGINS=https://your-domain.com \
+  fight-simulator
+```
+
+- SQLite 文件写在 `/data`（volume 持久化）
+- `PUBLIC_ORIGIN` 用于 `/r/:id` 的 og:url / og:image 绝对路径
+- `CORS_ORIGINS` 逗号分隔，白名单生产域名
+
+### 裸机
+
+```bash
+npm ci
+npm run build
+DEEPSEEK_API_KEY=sk-xxxxx PUBLIC_ORIGIN=https://your-domain.com npm run start:api
+```
+
+### 环境变量
+
+| Name | Default | Note |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | — | 必填（没有则前端走兜底） |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | |
+| `PORT` | `8787` | |
+| `DATABASE_PATH` | `./data/fightsim.sqlite` | Docker 镜像内默认 `/data/fightsim.sqlite` |
+| `PUBLIC_ORIGIN` | 自动从请求 host 推断 | 建议显式设置，保证 OG 链接一致 |
+| `CORS_ORIGINS` | `localhost:5173` | 逗号分隔 |
+| `DAILY_LIMIT` | `1000` | 全局每日生成次数上限 |
+| `PER_IP_PER_MINUTE` | `10` | 每 IP 限流 |
+| `REPLAY_WRITES_PER_MINUTE` | `20` | 每 IP 存 replay 限流 |
+| `ADMIN_TOKEN` | 未设则禁用管理 API | `DELETE /api/replays/:id` 用 |
+| `SENTRY_DSN` | 未设则禁用 | 后端错误上报 |
+
+## CI
+
+`.github/workflows/ci.yml` 在 PR 和 push 到 `main` / `claude/**` 分支时跑
+`typecheck + build + test`。
