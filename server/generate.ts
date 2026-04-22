@@ -103,7 +103,9 @@ ${input.text}
 
   const completion = await client.chat.completions.create({
     model,
-    max_tokens: 1500,
+    // Actual output is ~400-600 tokens (main reply + 1-2 dialog turns).
+    // 800 leaves ~30% headroom without paying for unused generation time.
+    max_tokens: 800,
     temperature: 0.9,
     response_format: { type: 'json_object' },
     messages: [
