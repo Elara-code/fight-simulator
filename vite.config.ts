@@ -7,13 +7,14 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: false,
+    setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'server/**/*.{test,spec}.ts'],
   },
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'og-cover.svg'],
+      includeAssets: ['favicon.svg', 'og-cover.svg', 'og-cover.png'],
       manifest: {
         name: '吵架模拟器',
         short_name: '吵架模拟器',
