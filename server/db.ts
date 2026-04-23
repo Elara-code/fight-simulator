@@ -24,21 +24,34 @@ export function getDb(): Database.Database {
       created_at INTEGER NOT NULL,
       report_count INTEGER NOT NULL DEFAULT 0,
       removed INTEGER NOT NULL DEFAULT 0,
-      is_public INTEGER NOT NULL DEFAULT 0
+      is_public INTEGER NOT NULL DEFAULT 0,
+      score INTEGER,
+      verdict TEXT,
+      highlight TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_replays_created_at ON replays(created_at);
     CREATE INDEX IF NOT EXISTS idx_replays_removed ON replays(removed);
     CREATE INDEX IF NOT EXISTS idx_replays_public ON replays(is_public, removed, created_at);
   `)
 
-  // Idempotent migration for pre-existing installs that predate is_public.
+  // Idempotent migrations for installs that predate newer columns.
   const cols = db
     .prepare('PRAGMA table_info(replays)')
     .all() as { name: string }[]
-  if (!cols.some((c) => c.name === 'is_public')) {
+  const existing = new Set(cols.map((c) => c.name))
+  if (!existing.has('is_public')) {
     db.exec(
       'ALTER TABLE replays ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0',
     )
+  }
+  if (!existing.has('score')) {
+    db.exec('ALTER TABLE replays ADD COLUMN score INTEGER')
+  }
+  if (!existing.has('verdict')) {
+    db.exec('ALTER TABLE replays ADD COLUMN verdict TEXT')
+  }
+  if (!existing.has('highlight')) {
+    db.exec('ALTER TABLE replays ADD COLUMN highlight TEXT')
   }
 
   dbInstance = db

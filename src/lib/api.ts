@@ -1,10 +1,16 @@
 export type StyleKey = 'savage' | 'logic' | 'sarcasm' | 'calm'
 export type Relation = 'couple' | 'friend' | 'work' | 'family'
 export type GenerateHint = 'harder' | 'softer' | 'different'
+export type Verdict = '碾压' | '完胜' | '险胜' | '打平' | '失利'
 
 export type Reply = {
   me: string
   dialog: { them: string; me: string }[]
+  // Optional for backwards compat — older cached replies in history /
+  // persisted replays (from before we added scoring) don't have them.
+  score?: number
+  verdict?: Verdict
+  highlight?: string
 }
 
 export type GenerateRequest = {
@@ -70,6 +76,9 @@ export type ReplayPayload = {
   dialog: { them: string; me: string }[]
   style: StyleKey
   isPublic?: boolean
+  score?: number
+  verdict?: Verdict
+  highlight?: string
 }
 
 export type Replay = Omit<ReplayPayload, 'isPublic'> & {

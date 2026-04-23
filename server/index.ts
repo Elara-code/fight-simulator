@@ -265,6 +265,9 @@ app.get('/api/replays/:id', (req, res) => {
     dialog: replay.dialog,
     style: replay.style,
     createdAt: replay.createdAt,
+    score: replay.score,
+    verdict: replay.verdict,
+    highlight: replay.highlight,
   })
 })
 

@@ -20,6 +20,9 @@ export const GenerateRequest = z.object({
 })
 export type GenerateRequest = z.infer<typeof GenerateRequest>
 
+export const Verdict = z.enum(['碾压', '完胜', '险胜', '打平', '失利'])
+export type Verdict = z.infer<typeof Verdict>
+
 const ReplySchema = z.object({
   me: z.string().min(1),
   dialog: z
@@ -31,6 +34,11 @@ const ReplySchema = z.object({
     )
     .min(1)
     .max(2),
+  // Quality + drama — the model rates its own comeback so SharePage can
+  // show a real badge instead of a hardcoded "吵赢了" sticker.
+  score: z.number().int().min(0).max(100),
+  verdict: Verdict,
+  highlight: z.string().min(1).max(40),
 })
 export type Reply = z.infer<typeof ReplySchema>
 
@@ -84,9 +92,20 @@ const SYSTEM_PROMPT = `你是「吵架模拟器」的反击生成器。用户贴
       "them": "对方的后续反驳，1 行，口语，不超过 24 字",
       "me": "你的再反击，1-2 行，行间用 \\n 分隔，每行不超过 26 字，语气贴合所选风格"
     }
-  ]
+  ],
+  "score": 0-100 整数,
+  "verdict": "碾压" | "完胜" | "险胜" | "打平" | "失利",
+  "highlight": "一句最狠的 8-18 字金句，从 me 或对吵里挑，不要加引号"
 }
-dialog 数组长度 1 到 2。所有字段都不能为空字符串。`
+dialog 数组长度 1 到 2。所有字段都不能为空字符串。
+
+【打分规则（必须真实分辨，不要无脑满分）】
+- 95-100：神回复，意料之外情理之中，一刀见血还不越线（极少给）
+- 80-94：碾压感强，切入角度巧妙，金句有传播力
+- 65-79：爽文级，节奏好语气够，但角度较常见
+- 50-64：能回上，但较普通，或者太刚失了分寸
+- <50：失分，要么说服力不够，要么没踩到对方痛点
+verdict 和 score 的映射：score≥85 "碾压"，≥70 "完胜"，≥55 "险胜"，≥40 "打平"，<40 "失利"。`
 
 export async function generateReply(input: GenerateRequest): Promise<Reply> {
   const client = buildDeepSeekClient()
@@ -127,7 +146,11 @@ ${input.text}
   }
   const reply = ReplySchema.parse(parsed)
 
-  const pieces = [reply.me, ...reply.dialog.flatMap((d) => [d.them, d.me])]
+  const pieces = [
+    reply.me,
+    reply.highlight,
+    ...reply.dialog.flatMap((d) => [d.them, d.me]),
+  ]
   for (const piece of pieces) {
     const verdict = screenModelOutput(piece)
     if (!verdict.ok) {

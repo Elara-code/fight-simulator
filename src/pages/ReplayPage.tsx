@@ -2,8 +2,22 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { useToast } from '../components/Toast'
-import { ApiError, getReplay, reportReplay, type Replay } from '../lib/api'
+import {
+  ApiError,
+  getReplay,
+  reportReplay,
+  type Replay,
+  type Verdict,
+} from '../lib/api'
 import { track } from '../lib/analytics'
+
+const VERDICT_COLORS: Record<Verdict, { from: string; to: string }> = {
+  碾压: { from: '#FF3B4D', to: '#8B5CF6' },
+  完胜: { from: '#FF3B4D', to: '#FF7A45' },
+  险胜: { from: '#FF7A45', to: '#FBBF24' },
+  打平: { from: '#3B82F6', to: '#8B5CF6' },
+  失利: { from: '#3A3F4B', to: '#1C1F26' },
+}
 
 type Line = { side: 'left' | 'right'; text: string }
 
@@ -147,27 +161,61 @@ export default function ReplayPage() {
         )}
 
         {replay && !error && (
-          <div className="rounded-[22px] bg-[#ECECEC] p-4 shadow-card mt-2">
-            <div className="space-y-3 min-h-[260px] pt-1">
-              {lines.slice(0, shown).map((l, i) => (
-                <div
-                  key={i}
-                  style={{ animationDelay: `${i * 40}ms` }}
-                  className="animate-typeIn"
-                >
-                  <Row side={l.side} text={l.text} />
+          <>
+            <div className="rounded-[22px] bg-[#ECECEC] p-4 shadow-card mt-2 relative">
+              {replay.verdict && (
+                <div className="absolute -top-2 right-4 -rotate-6">
+                  <VerdictBadge verdict={replay.verdict} />
                 </div>
-              ))}
-              {shown < lines.length && (
-                <Row side={lines[shown].side} text="…" typing />
               )}
-            </div>
-            <div className="mt-4 pt-3 border-t border-black/10 text-center">
-              <div className="text-[11px] text-black/60 tracking-wide">
-                来自「吵架模拟器」
+              <div className="space-y-3 min-h-[260px] pt-1">
+                {lines.slice(0, shown).map((l, i) => (
+                  <div
+                    key={i}
+                    style={{ animationDelay: `${i * 40}ms` }}
+                    className="animate-typeIn"
+                  >
+                    <Row side={l.side} text={l.text} />
+                  </div>
+                ))}
+                {shown < lines.length && (
+                  <Row side={lines[shown].side} text="…" typing />
+                )}
+              </div>
+              <div className="mt-4 pt-3 border-t border-black/10 text-center">
+                <div className="text-[11px] text-black/60 tracking-wide">
+                  来自「吵架模拟器」
+                </div>
               </div>
             </div>
-          </div>
+
+            {(typeof replay.score === 'number' || replay.highlight) && (
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  {typeof replay.score === 'number' && (
+                    <div>
+                      <div className="text-[11px] text-muted">AI 评分</div>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="font-heavy font-black text-[32px] leading-none font-num text-white">
+                          {replay.score}
+                        </span>
+                        <span className="text-[12px] text-muted">/ 100</span>
+                      </div>
+                    </div>
+                  )}
+                  {replay.verdict && <VerdictBadge verdict={replay.verdict} big />}
+                </div>
+                {replay.highlight && (
+                  <div className="mt-3 pt-3 border-t border-white/5">
+                    <div className="text-[11px] text-muted">AI 认为最狠的一句</div>
+                    <blockquote className="mt-1 text-[14px] text-white/90 leading-snug before:content-['“'] after:content-['”'] before:text-accent after:text-accent">
+                      {replay.highlight}
+                    </blockquote>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -238,6 +286,20 @@ function Ava() {
         <path d="M8 10h.01M12 10h.01M16 10h.01" />
         <path d="M21 12a8 8 0 1 1-3.3-6.5L21 5l-1 3.5A8 8 0 0 1 21 12Z" />
       </svg>
+    </div>
+  )
+}
+
+function VerdictBadge({ verdict, big }: { verdict: Verdict; big?: boolean }) {
+  const { from, to } = VERDICT_COLORS[verdict]
+  return (
+    <div
+      className={`relative font-heavy font-black text-white rounded-xl shadow-card ${
+        big ? 'text-[18px] px-4 py-2' : 'text-[13px] px-3 py-1.5'
+      }`}
+      style={{ background: `linear-gradient(135deg, ${from} 0%, ${to} 100%)` }}
+    >
+      {verdict}
     </div>
   )
 }

@@ -43,6 +43,26 @@ describe('replay store', () => {
     expect(got?.me).toBe('b')
     expect(got?.dialog[0].me).toBe('d')
     expect(got?.style).toBe('logic')
+    // No score provided — should come back undefined, not 0 or null.
+    expect(got?.score).toBeUndefined()
+    expect(got?.verdict).toBeUndefined()
+    expect(got?.highlight).toBeUndefined()
+  })
+
+  it('getReplay round-trips score/verdict/highlight when provided', () => {
+    const created = createReplay({
+      them: 'a',
+      me: 'b',
+      dialog: [{ them: 'c', me: 'd' }],
+      style: 'savage',
+      score: 87,
+      verdict: '碾压',
+      highlight: '这句最狠',
+    })
+    const got = getReplay(created.id)
+    expect(got?.score).toBe(87)
+    expect(got?.verdict).toBe('碾压')
+    expect(got?.highlight).toBe('这句最狠')
   })
 
   it('getReplay returns undefined for missing id', () => {

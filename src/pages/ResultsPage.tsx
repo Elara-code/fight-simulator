@@ -262,7 +262,15 @@ export default function ResultsPage() {
         <button
           onClick={() =>
             nav('/share', {
-              state: { style, them: themMsg, me: reply.me, dialog: reply.dialog },
+              state: {
+                style,
+                them: themMsg,
+                me: reply.me,
+                dialog: reply.dialog,
+                score: reply.score,
+                verdict: reply.verdict,
+                highlight: reply.highlight,
+              },
             })
           }
           aria-label="生成截图分享"

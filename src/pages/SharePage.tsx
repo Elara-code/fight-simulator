@@ -6,7 +6,12 @@ import { Back, Copy, Download, Home, Share, User } from '../components/Icons'
 import Fireworks from '../components/Fireworks'
 import { useToast } from '../components/Toast'
 import { track } from '../lib/analytics'
-import { ApiError, createReplay, type StyleKey } from '../lib/api'
+import {
+  ApiError,
+  createReplay,
+  type StyleKey,
+  type Verdict,
+} from '../lib/api'
 import {
   clearUserAvatar,
   getUserAvatar,
@@ -14,12 +19,16 @@ import {
   setUserAvatarFromFile,
 } from '../lib/avatar'
 
-const STICKERS = [
-  { label: '吵赢了', from: '#FF3B4D', to: '#FF7A45' },
-  { label: '905分', from: '#3B82F6', to: '#8B5CF6' },
-  { label: '碾压', from: '#8B5CF6', to: '#FF3B4D' },
-  { label: '绝杀', from: '#0F1115', to: '#1C1F26' },
-]
+// Color pairs for each verdict tier. 碾压 / 完胜 are warm-hot; 险胜 is
+// amber; 打平 / 失利 lean blue/neutral so a screenshot with a lower
+// score doesn't read as a "win" by color alone.
+const VERDICT_COLORS: Record<Verdict, { from: string; to: string }> = {
+  碾压: { from: '#FF3B4D', to: '#8B5CF6' },
+  完胜: { from: '#FF3B4D', to: '#FF7A45' },
+  险胜: { from: '#FF7A45', to: '#FBBF24' },
+  打平: { from: '#3B82F6', to: '#8B5CF6' },
+  失利: { from: '#3A3F4B', to: '#1C1F26' },
+}
 
 type Line = { side: 'left' | 'right'; text: string }
 
@@ -28,6 +37,9 @@ type ShareState = {
   me?: string
   dialog?: { them: string; me: string }[]
   style?: StyleKey
+  score?: number
+  verdict?: Verdict
+  highlight?: string
 }
 
 export default function SharePage() {
@@ -53,6 +65,11 @@ export default function SharePage() {
       { side: 'right', text: t.me },
     ]),
   ]
+
+  const score = state?.score
+  const verdict = state?.verdict
+  const highlight = state?.highlight
+  const hasScore = typeof score === 'number' && !!verdict
 
   const [shown, setShown] = useState(0)
   const [dinged, setDinged] = useState(false)
@@ -104,6 +121,9 @@ export default function SharePage() {
       dialog: followUps,
       style,
       isPublic: wantsPublic,
+      score,
+      verdict,
+      highlight,
     })
       .then((r) => {
         const url = `${origin}${r.url}`
@@ -279,9 +299,14 @@ export default function SharePage() {
             299599
           </div>
 
-          {dinged && (
+          {dinged && hasScore && (
             <div className="absolute -top-2 right-4 -rotate-6 animate-dingPop">
-              <Badge label="吵赢了" from="#FF3B4D" to="#FF7A45" big />
+              <Badge
+                label={verdict!}
+                from={VERDICT_COLORS[verdict!].from}
+                to={VERDICT_COLORS[verdict!].to}
+                big
+              />
             </div>
           )}
 
@@ -318,16 +343,35 @@ export default function SharePage() {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-4 gap-3">
-          {STICKERS.map((s) => (
-            <div
-              key={s.label}
-              className="aspect-[1.2/1] rounded-2xl border border-white/10 bg-white/[0.04] grid place-items-center"
-            >
-              <Badge label={s.label} from={s.from} to={s.to} />
+        {hasScore && (
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] text-muted">AI 评分</div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="font-heavy font-black text-[36px] leading-none font-num text-white">
+                    {score}
+                  </span>
+                  <span className="text-[13px] text-muted">/ 100</span>
+                </div>
+              </div>
+              <Badge
+                label={verdict!}
+                from={VERDICT_COLORS[verdict!].from}
+                to={VERDICT_COLORS[verdict!].to}
+                big
+              />
             </div>
-          ))}
-        </div>
+            {highlight && (
+              <div className="mt-3 pt-3 border-t border-white/5">
+                <div className="text-[11px] text-muted">AI 认为最狠的一句</div>
+                <blockquote className="mt-1 text-[14px] text-white/90 leading-snug before:content-['“'] after:content-['”'] before:text-accent after:text-accent">
+                  {highlight}
+                </blockquote>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-5 flex items-center gap-3">
           <button

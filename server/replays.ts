@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { getDb } from './db.js'
-import { StyleKey } from './generate.js'
+import { StyleKey, Verdict } from './generate.js'
 
 export const ReplayInput = z.object({
   them: z.string().min(1).max(600),
@@ -16,6 +16,9 @@ export const ReplayInput = z.object({
     .max(4),
   style: StyleKey,
   isPublic: z.boolean().optional(),
+  score: z.number().int().min(0).max(100).optional(),
+  verdict: Verdict.optional(),
+  highlight: z.string().min(1).max(60).optional(),
 })
 export type ReplayInput = z.infer<typeof ReplayInput>
 
@@ -46,6 +49,9 @@ type Row = {
   report_count: number
   removed: number
   is_public: number
+  score: number | null
+  verdict: Verdict | null
+  highlight: string | null
 }
 
 function rowToReplay(row: Row): Replay {
@@ -57,6 +63,9 @@ function rowToReplay(row: Row): Replay {
     style: row.style,
     createdAt: row.created_at,
     isPublic: row.is_public === 1,
+    score: row.score ?? undefined,
+    verdict: row.verdict ?? undefined,
+    highlight: row.highlight ?? undefined,
   }
 }
 
@@ -77,8 +86,8 @@ export function createReplay(input: ReplayInput): Replay {
   const isPublic = input.isPublic ? 1 : 0
   getDb()
     .prepare(
-      `INSERT INTO replays (id, them, me, dialog, style, created_at, is_public)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO replays (id, them, me, dialog, style, created_at, is_public, score, verdict, highlight)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -88,6 +97,9 @@ export function createReplay(input: ReplayInput): Replay {
       input.style,
       now,
       isPublic,
+      input.score ?? null,
+      input.verdict ?? null,
+      input.highlight ?? null,
     )
   return {
     them: input.them,
@@ -97,13 +109,16 @@ export function createReplay(input: ReplayInput): Replay {
     id,
     createdAt: now,
     isPublic: isPublic === 1,
+    score: input.score,
+    verdict: input.verdict,
+    highlight: input.highlight,
   }
 }
 
 export function getReplay(id: string): Replay | undefined {
   const row = getDb()
     .prepare(
-      `SELECT id, them, me, dialog, style, created_at, report_count, removed, is_public
+      `SELECT id, them, me, dialog, style, created_at, report_count, removed, is_public, score, verdict, highlight
        FROM replays WHERE id = ?`,
     )
     .get(id) as Row | undefined
