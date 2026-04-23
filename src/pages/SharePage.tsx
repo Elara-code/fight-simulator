@@ -7,6 +7,12 @@ import Fireworks from '../components/Fireworks'
 import { useToast } from '../components/Toast'
 import { track } from '../lib/analytics'
 import { ApiError, createReplay, type StyleKey } from '../lib/api'
+import {
+  clearUserAvatar,
+  getUserAvatar,
+  onUserAvatarChange,
+  setUserAvatarFromFile,
+} from '../lib/avatar'
 
 const STICKERS = [
   { label: '吵赢了', from: '#FF3B4D', to: '#FF7A45' },
@@ -55,8 +61,30 @@ export default function SharePage() {
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
   const [replayUrl, setReplayUrl] = useState<string>('')
   const [wantsPublic, setWantsPublic] = useState(false)
+  const [meAvatar, setMeAvatar] = useState<string | null>(() => getUserAvatar())
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const replayPromiseRef = useRef<Promise<string | null> | null>(null)
+
+  useEffect(() => onUserAvatarChange(setMeAvatar), [])
+
+  const onPickAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // reset so selecting the same file again re-fires
+    if (!file) return
+    try {
+      await setUserAvatarFromFile(file)
+      toast.show('头像已保存，下次默认使用', 'success')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '头像设置失败'
+      toast.show(msg, 'error')
+    }
+  }
+
+  const onClearAvatar = () => {
+    clearUserAvatar()
+    toast.show('已恢复默认头像', 'success')
+  }
 
   const ready = shown >= lines.length
   const origin =
@@ -264,11 +292,11 @@ export default function SharePage() {
                 style={{ animationDelay: `${i * 40}ms` }}
                 className="animate-typeIn"
               >
-                <Row side={l.side} text={l.text} />
+                <Row side={l.side} text={l.text} meAvatar={meAvatar} />
               </div>
             ))}
             {shown < lines.length && (
-              <Row side={lines[shown].side} text="…" typing />
+              <Row side={lines[shown].side} text="…" typing meAvatar={meAvatar} />
             )}
             <div className="mt-4 pt-3 border-t border-black/10 flex items-center justify-between gap-3">
               <div>
@@ -353,6 +381,49 @@ export default function SharePage() {
           </div>
         </label>
 
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+          <div className="w-8 h-8 rounded-[10px] overflow-hidden shrink-0 bg-gradient-to-br from-primary to-[#C5163A] grid place-items-center text-white">
+            {meAvatar ? (
+              <img
+                src={meAvatar}
+                alt="我的头像"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-[12px] font-heavy font-black">我</span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] text-white/85 font-heavy font-black">
+              {meAvatar ? '已设置我方头像' : '给「我」设个头像'}
+            </div>
+            <div className="text-[10.5px] text-muted/80 truncate">
+              截图里我方气泡就不会跟对方撞脸了
+            </div>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onPickAvatar}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="h-8 px-3 rounded-full bg-white/10 text-white/90 text-[12px] active:scale-95"
+          >
+            {meAvatar ? '更换' : '上传'}
+          </button>
+          {meAvatar && (
+            <button
+              onClick={onClearAvatar}
+              className="h-8 px-2.5 rounded-full text-white/60 text-[11px] active:scale-95"
+            >
+              清除
+            </button>
+          )}
+        </div>
+
         <button
           onClick={onCopyLink}
           disabled={!ready || busy !== null}
@@ -378,17 +449,19 @@ function Row({
   side,
   text,
   typing,
+  meAvatar,
 }: {
   side: 'left' | 'right'
   text: string
   typing?: boolean
+  meAvatar: string | null
 }) {
   const right = side === 'right'
   return (
     <div
       className={`flex ${right ? 'justify-end' : 'justify-start'} items-start gap-2`}
     >
-      {!right && <Ava tone="red" />}
+      {!right && <Ava tone="gray" />}
       <div
         className={`max-w-[80%] px-3 py-2 rounded-2xl text-[13.5px] leading-snug shadow-sm whitespace-pre-line ${
           right
@@ -404,7 +477,7 @@ function Row({
           text
         )}
       </div>
-      {right && <Ava tone="red" />}
+      {right && <Ava tone="red" src={meAvatar} />}
     </div>
   )
 }
@@ -418,11 +491,27 @@ function Dot({ delay = 0 }: { delay?: number }) {
   )
 }
 
-function Ava({ tone }: { tone: 'red' | 'blue' }) {
+function Ava({ tone, src }: { tone: 'red' | 'blue' | 'gray'; src?: string | null }) {
+  // If user uploaded their own photo, show that (only valid for the "me"
+  // side; the other person always uses a neutral gray placeholder).
+  if (src) {
+    return (
+      <div className="w-7 h-7 rounded-[10px] overflow-hidden shadow bg-black/20">
+        <img
+          src={src}
+          alt=""
+          className="w-full h-full object-cover"
+          crossOrigin="anonymous"
+        />
+      </div>
+    )
+  }
   const bg =
     tone === 'red'
       ? 'bg-gradient-to-br from-primary to-[#C5163A]'
-      : 'bg-gradient-to-br from-ai to-[#1E6FB8]'
+      : tone === 'blue'
+        ? 'bg-gradient-to-br from-ai to-[#1E6FB8]'
+        : 'bg-gradient-to-br from-[#3A3F4B] to-[#1C1F26]'
   return (
     <div
       className={`w-7 h-7 rounded-[10px] ${bg} grid place-items-center text-white shadow`}
