@@ -434,6 +434,26 @@ if (HAS_DIST) {
   log.warn('dist_missing', { dir: DIST_DIR })
 }
 
+// Global error handler — catches anything a route handler throws or an
+// async handler rejects with. Without this, Express's default handler
+// dumps the raw stack to console.error which Fly tags as [info] and
+// looks like a misclassified info log (github issue #11).
+//
+// Must be registered last, after all routes + the SPA fallback.
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err)
+  const stack = err instanceof Error ? err.stack : undefined
+  log.error('unhandled_error', {
+    method: req.method,
+    path: req.path,
+    err: message,
+    stack,
+  })
+  Sentry.captureException(err)
+  if (res.headersSent) return
+  res.status(500).json({ error: 'internal' })
+})
+
 const port = Number(process.env.PORT) || 8787
 // Bind to all interfaces (IPv4 + IPv6). Fly.io's proxy reaches the VM over
 // IPv6 so leaving Node's default can make the app look "down" from outside.

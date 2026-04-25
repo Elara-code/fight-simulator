@@ -14,6 +14,11 @@ export function getDb(): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 
+  // Initial schema: only declares indexes on columns that have always
+  // existed (created_at, removed). Indexes on columns added by ALTER
+  // TABLE migrations below are created AFTER the migrations run, so
+  // legacy DBs don't crash trying to index a column that doesn't exist
+  // yet (regression: github issue #11).
   db.exec(`
     CREATE TABLE IF NOT EXISTS replays (
       id TEXT PRIMARY KEY,
@@ -32,8 +37,6 @@ export function getDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_replays_created_at ON replays(created_at);
     CREATE INDEX IF NOT EXISTS idx_replays_removed ON replays(removed);
-    CREATE INDEX IF NOT EXISTS idx_replays_public ON replays(is_public, removed, created_at);
-    CREATE INDEX IF NOT EXISTS idx_replays_scenario ON replays(scenario_id, is_public, removed, score);
   `)
 
   // Idempotent migrations for installs that predate newer columns.
@@ -57,10 +60,14 @@ export function getDb(): Database.Database {
   }
   if (!existing.has('scenario_id')) {
     db.exec('ALTER TABLE replays ADD COLUMN scenario_id TEXT')
-    db.exec(
-      'CREATE INDEX IF NOT EXISTS idx_replays_scenario ON replays(scenario_id, is_public, removed, score)',
-    )
   }
+
+  // Indexes on migration-added columns. Run after the column migrations
+  // so they always succeed regardless of starting schema version.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_replays_public ON replays(is_public, removed, created_at);
+    CREATE INDEX IF NOT EXISTS idx_replays_scenario ON replays(scenario_id, is_public, removed, score);
+  `)
 
   // Challenge invites — used by the friend-help-fight flow. Same 7-day
   // TTL as replays; opponent_* columns stay null until the friend
