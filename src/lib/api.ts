@@ -217,6 +217,84 @@ export async function reportReplay(
   return res.json()
 }
 
+export type TrainVerdict = 'win' | 'draw' | 'lose'
+
+export type Challenge = {
+  id: string
+  opening: string
+  relation: Relation
+  challengerScore: number
+  challengerVerdict: TrainVerdict
+  challengerName?: string
+  opponentScore?: number
+  opponentVerdict?: TrainVerdict
+  opponentName?: string
+  opponentCompletedAt?: number
+  createdAt: number
+}
+
+export type ChallengeCreatePayload = {
+  opening: string
+  relation: Relation
+  challengerScore: number
+  challengerVerdict: TrainVerdict
+  challengerName?: string
+}
+
+export type ChallengeCompletePayload = {
+  opponentScore: number
+  opponentVerdict: TrainVerdict
+  opponentName?: string
+}
+
+export async function createChallenge(
+  body: ChallengeCreatePayload,
+): Promise<{ id: string; url: string }> {
+  const res = await fetch('/api/challenges', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    const message = typeof payload.message === 'string' ? payload.message : undefined
+    throw new ApiError(res.status, code, message ?? mapCodeToMessage(code, res.status))
+  }
+  return res.json()
+}
+
+export async function getChallenge(id: string): Promise<Challenge> {
+  const res = await fetch(`/api/challenges/${encodeURIComponent(id)}`)
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    throw new ApiError(res.status, code, mapCodeToMessage(code, res.status))
+  }
+  return res.json()
+}
+
+export async function completeChallenge(
+  id: string,
+  body: ChallengeCompletePayload,
+): Promise<Challenge> {
+  const res = await fetch(
+    `/api/challenges/${encodeURIComponent(id)}/complete`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    },
+  )
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    const message = typeof payload.message === 'string' ? payload.message : undefined
+    throw new ApiError(res.status, code, message ?? mapCodeToMessage(code, res.status))
+  }
+  return res.json()
+}
+
 function mapCodeToMessage(code: string, status: number): string {
   switch (code) {
     case 'rate_limited':
@@ -237,6 +315,8 @@ function mapCodeToMessage(code: string, status: number): string {
       return '这条内容我们没法帮你生成，换一句试试'
     case 'not_found':
       return '这条战绩已过期或不存在'
+    case 'already_completed':
+      return '这条挑战已经被人吵过了，再开一局吧'
     default:
       return status >= 500 ? '服务临时抽风，请重试' : '请求失败，请重试'
   }

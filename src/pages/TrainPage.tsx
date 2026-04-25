@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Back, Bolt } from '../components/Icons'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { Back, Bolt, Copy, Share } from '../components/Icons'
 import { useToast } from '../components/Toast'
 import {
   ApiError,
+  completeChallenge,
+  createChallenge,
   trainNext,
   type Relation,
   type StyleKey,
   type TrainMessage,
   type TrainTurn,
+  type TrainVerdict,
 } from '../lib/api'
 import { track } from '../lib/analytics'
 
@@ -36,17 +39,58 @@ const QUICK_OPENINGS: { label: string; text: string; rel: Relation }[] = [
 
 const MAX_USER_TURNS = 5
 
+function verdictLabel(v: TrainVerdict): string {
+  return v === 'win' ? '吵赢了' : v === 'lose' ? '吵输了' : '打平'
+}
+
+type ChallengeContext = {
+  id: string
+  challengerScore: number
+  challengerVerdict: TrainVerdict
+}
+
+type TrainLocState = {
+  // Set when arriving from a challenge accept page; pre-fills the
+  // opening + relation and starts the chat immediately.
+  challenge?: {
+    id: string
+    opening: string
+    relation: Relation
+    challengerScore: number
+    challengerVerdict: TrainVerdict
+  }
+}
+
+type ChallengeShare = {
+  status: 'idle' | 'creating' | 'created' | 'error'
+  url?: string
+}
+
 export default function TrainPage() {
   const nav = useNavigate()
   const toast = useToast()
-  const [phase, setPhase] = useState<Phase>('setup')
+  const { state } = useLocation() as { state?: TrainLocState }
+  const challenge = state?.challenge
+  const [phase, setPhase] = useState<Phase>(challenge ? 'active' : 'setup')
   const [setup, setSetup] = useState<Setup>({
-    relation: 'couple',
-    opening: '',
+    relation: challenge?.relation ?? 'couple',
+    opening: challenge?.opening ?? '',
   })
-  const [history, setHistory] = useState<TrainMessage[]>([])
+  const [history, setHistory] = useState<TrainMessage[]>(
+    challenge ? [{ role: 'them', text: challenge.opening }] : [],
+  )
   const [input, setInput] = useState('')
   const [thinking, setThinking] = useState(false)
+  const [share, setShare] = useState<ChallengeShare>({ status: 'idle' })
+  // Once we POST our score back to a challenge we shouldn't do it twice.
+  const challengeCompletedRef = useRef(false)
+  const challengeContext: ChallengeContext | null = challenge
+    ? {
+        id: challenge.id,
+        challengerScore: challenge.challengerScore,
+        challengerVerdict: challenge.challengerVerdict,
+      }
+    : null
   const [result, setResult] = useState<{
     score: number
     verdict: 'win' | 'draw' | 'lose'
@@ -64,6 +108,35 @@ export default function TrainPage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [history, thinking])
+
+  // When the user is finishing a challenge (not their own training session),
+  // POST the score back to the server and jump to the comparison page so
+  // they can see how they did vs. the challenger.
+  useEffect(() => {
+    if (phase !== 'done' || !result || !challengeContext) return
+    if (challengeCompletedRef.current) return
+    challengeCompletedRef.current = true
+    completeChallenge(challengeContext.id, {
+      opponentScore: result.score,
+      opponentVerdict: result.verdict,
+    })
+      .then(() => {
+        track('challenge_complete', {
+          challenge_id: challengeContext.id,
+          opponent_score: result.score,
+          opponent_verdict: result.verdict,
+          challenger_score: challengeContext.challengerScore,
+        })
+        nav(`/challenge/${challengeContext.id}`, { replace: true })
+      })
+      .catch((err) => {
+        challengeCompletedRef.current = false
+        const message =
+          err instanceof ApiError ? err.message : '挑战结果提交失败，请重试'
+        toast.show(message, 'error')
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, result])
 
   const start = () => {
     const opening = setup.opening.trim()
@@ -123,6 +196,51 @@ export default function TrainPage() {
     setHistory([])
     setInput('')
     setResult(null)
+    setShare({ status: 'idle' })
+    challengeCompletedRef.current = false
+  }
+
+  const onChallengeFriend = async () => {
+    if (!result || share.status === 'creating') return
+    setShare({ status: 'creating' })
+    try {
+      const created = await createChallenge({
+        opening: setup.opening,
+        relation: setup.relation,
+        challengerScore: result.score,
+        challengerVerdict: result.verdict,
+      })
+      const url = `${window.location.origin}/challenge/${created.id}`
+      setShare({ status: 'created', url })
+      track('challenge_create', {
+        score: result.score,
+        verdict: result.verdict,
+      })
+      // Try the native share sheet first; fall back to clipboard if the
+      // browser doesn't support it (Safari desktop, some Android WebViews).
+      const text = `我吵了一局得了 ${result.score} 分（${verdictLabel(result.verdict)}）。你来挑战看看？`
+      if (typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: '吵架模拟器 · 挑战', text, url })
+          track('challenge_share', { method: 'native' })
+          return
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(`${text}\n${url}`)
+        toast.show('挑战链接已复制，可以发给朋友了', 'success')
+        track('challenge_share', { method: 'clipboard' })
+      } catch {
+        toast.show('已生成链接，请长按上方链接手动复制', 'info')
+      }
+    } catch (err) {
+      setShare({ status: 'error' })
+      const message =
+        err instanceof ApiError ? err.message : '生成挑战链接失败，请重试'
+      toast.show(message, 'error')
+    }
   }
 
   const saveAsReplay = () => {
@@ -204,6 +322,9 @@ export default function TrainPage() {
           onRetry={retry}
           onSave={saveAsReplay}
           canSave={history.filter((m) => m.role === 'me').length > 0}
+          onChallenge={onChallengeFriend}
+          share={share}
+          inChallenge={!!challengeContext}
         />
       )}
     </div>
@@ -383,19 +504,49 @@ function ResultBar({
   onRetry,
   onSave,
   canSave,
+  onChallenge,
+  share,
+  inChallenge,
 }: {
-  result: { score: number; verdict: 'win' | 'draw' | 'lose'; feedback: string }
+  result: { score: number; verdict: TrainVerdict; feedback: string }
   onRetry: () => void
   onSave: () => void
   canSave: boolean
+  onChallenge: () => void
+  share: ChallengeShare
+  inChallenge: boolean
 }) {
-  const label = result.verdict === 'win' ? '吵赢了' : result.verdict === 'lose' ? '吵输了' : '打平'
+  const label = verdictLabel(result.verdict)
   const tone =
     result.verdict === 'win'
       ? 'from-primary to-accent'
       : result.verdict === 'lose'
         ? 'from-slate-600 to-slate-800'
         : 'from-ai to-[#1E6FB8]'
+  // In a friend's challenge attempt the result auto-completes server-side
+  // and the route swaps to /challenge/:id, so this bar appears only briefly
+  // during that transition. Show a minimal "正在提交结果…" status instead
+  // of confusing buttons.
+  if (inChallenge) {
+    return (
+      <div className="sticky bottom-0 left-0 right-0 px-4 pb-6 pt-4 bg-gradient-to-t from-bg via-bg/95 to-transparent">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center">
+          <div
+            className={`mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br ${tone} grid place-items-center font-heavy font-black text-white shadow-card`}
+          >
+            <div className="text-center leading-none">
+              <div className="text-[22px]">{result.score}</div>
+              <div className="text-[9px] opacity-80 mt-0.5">/100</div>
+            </div>
+          </div>
+          <div className="mt-2 font-heavy font-black text-[16px]">{label}</div>
+          <div className="text-[12px] text-muted leading-snug mt-1">
+            正在提交挑战结果…
+          </div>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="sticky bottom-0 left-0 right-0 px-4 pb-6 pt-4 bg-gradient-to-t from-bg via-bg/95 to-transparent">
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -415,7 +566,29 @@ function ResultBar({
             </div>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-2">
+
+        <button
+          onClick={onChallenge}
+          disabled={share.status === 'creating'}
+          className="mt-4 w-full h-12 rounded-xl bg-share-gradient text-white font-heavy font-black text-[14px] shadow-glowAi active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          <Share className="w-4 h-4" />
+          {share.status === 'creating'
+            ? '生成挑战链接中…'
+            : share.status === 'created'
+              ? '再分享一次'
+              : '发给朋友挑战这局'}
+        </button>
+        {share.status === 'created' && share.url && (
+          <div className="mt-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 flex items-center gap-2">
+            <Copy className="w-3.5 h-3.5 text-muted shrink-0" />
+            <span className="text-[11.5px] text-white/70 truncate flex-1">
+              {share.url}
+            </span>
+          </div>
+        )}
+
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <button
             onClick={onRetry}
             className="h-12 rounded-xl border border-white/10 bg-white/5 text-white font-heavy font-black text-[14px] active:scale-95"

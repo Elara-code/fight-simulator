@@ -23,6 +23,11 @@ type EventName =
   | 'feed_item_click'
   | 'scenario_top_view'
   | 'scenario_top_click'
+  | 'challenge_create'
+  | 'challenge_share'
+  | 'challenge_view'
+  | 'challenge_accept'
+  | 'challenge_complete'
   | 'web_vitals'
 
 type PostHogCapture = (event: string, props?: Record<string, unknown>) => void
