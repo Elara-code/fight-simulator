@@ -30,6 +30,13 @@ import {
   listScenarioTop,
   reportReplay,
 } from './replays.js'
+import {
+  ChallengeCompleteInput,
+  ChallengeCreateInput,
+  completeChallenge,
+  createChallenge,
+  getChallenge,
+} from './challenges.js'
 import { screenUserInput } from './safety.js'
 import { TrainRequest, trainTurn } from './train.js'
 
@@ -257,6 +264,55 @@ app.get('/api/scenarios/:id/top', (req, res) => {
   }
   const items = listScenarioTop(id, 10)
   res.json({ items })
+})
+
+// --- Friend challenges ---------------------------------------------------
+// Reuse the replay write limiter so a single IP can't spam invites.
+
+app.post('/api/challenges', replayWriteLimiter, (req, res) => {
+  const parsed = ChallengeCreateInput.safeParse(req.body)
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'bad_request', issues: parsed.error.issues })
+  }
+  const safety = screenUserInput(parsed.data.opening)
+  if (!safety.ok) {
+    log.warn('challenge_blocked', { code: safety.code })
+    return res.status(400).json({ error: safety.code, message: safety.reason })
+  }
+  const challenge = createChallenge(parsed.data)
+  res.status(201).json({ id: challenge.id, url: `/challenge/${challenge.id}` })
+})
+
+app.get('/api/challenges/:id', (req, res) => {
+  const id = req.params.id
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const challenge = getChallenge(id)
+  if (!challenge) return res.status(404).json({ error: 'not_found' })
+  res.json(challenge)
+})
+
+app.post('/api/challenges/:id/complete', replayWriteLimiter, (req, res) => {
+  const id = req.params.id
+  if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const parsed = ChallengeCompleteInput.safeParse(req.body)
+  if (!parsed.success) {
+    return res
+      .status(400)
+      .json({ error: 'bad_request', issues: parsed.error.issues })
+  }
+  const result = completeChallenge(id, parsed.data)
+  if (!result.ok) {
+    return res.status(result.code === 'not_found' ? 404 : 409).json({
+      error: result.code,
+    })
+  }
+  res.json(result.challenge)
 })
 
 app.get('/api/replays/:id', (req, res) => {

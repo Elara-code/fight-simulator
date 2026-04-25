@@ -62,6 +62,27 @@ export function getDb(): Database.Database {
     )
   }
 
+  // Challenge invites — used by the friend-help-fight flow. Same 7-day
+  // TTL as replays; opponent_* columns stay null until the friend
+  // completes their attempt.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS challenges (
+      id TEXT PRIMARY KEY,
+      opening TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      challenger_score INTEGER NOT NULL,
+      challenger_verdict TEXT NOT NULL,
+      challenger_name TEXT,
+      opponent_score INTEGER,
+      opponent_verdict TEXT,
+      opponent_name TEXT,
+      opponent_completed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      removed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_challenges_created_at ON challenges(created_at);
+  `)
+
   dbInstance = db
   return db
 }
