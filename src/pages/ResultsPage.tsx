@@ -64,6 +64,7 @@ type LocState = {
   reply?: Reply
   style?: StyleKey
   entryId?: string
+  scenarioId?: string | null
 }
 
 function loadEntryState(state: LocState | undefined): {
@@ -270,6 +271,7 @@ export default function ResultsPage() {
                 score: reply.score,
                 verdict: reply.verdict,
                 highlight: reply.highlight,
+                scenarioId: state?.scenarioId ?? null,
               },
             })
           }

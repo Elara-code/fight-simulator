@@ -27,6 +27,7 @@ import {
   createReplay,
   getReplay,
   listPublicFeed,
+  listScenarioTop,
   reportReplay,
 } from './replays.js'
 import { screenUserInput } from './safety.js'
@@ -247,6 +248,15 @@ app.post('/api/replays', replayWriteLimiter, (req, res) => {
 app.get('/api/replays/top', (_req, res) => {
   const feed = listPublicFeed(30)
   res.json({ items: feed })
+})
+
+app.get('/api/scenarios/:id/top', (req, res) => {
+  const id = req.params.id
+  if (!/^[a-z][a-z0-9_]{2,40}$/.test(id)) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const items = listScenarioTop(id, 10)
+  res.json({ items })
 })
 
 app.get('/api/replays/:id', (req, res) => {

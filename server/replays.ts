@@ -19,13 +19,22 @@ export const ReplayInput = z.object({
   score: z.number().int().min(0).max(100).optional(),
   verdict: Verdict.optional(),
   highlight: z.string().min(1).max(60).optional(),
+  // Anchor to one of the predefined scenarios so ScenarioTopPage can
+  // aggregate. Scenario IDs are short slugs the client owns (see
+  // src/lib/scenarios.ts). null = user typed their own text.
+  scenarioId: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{2,40}$/)
+    .nullable()
+    .optional(),
 })
 export type ReplayInput = z.infer<typeof ReplayInput>
 
-export type Replay = Omit<ReplayInput, 'isPublic'> & {
+export type Replay = Omit<ReplayInput, 'isPublic' | 'scenarioId'> & {
   id: string
   createdAt: number
   isPublic: boolean
+  scenarioId?: string
 }
 
 export type FeedItem = {
@@ -34,6 +43,8 @@ export type FeedItem = {
   me: string
   style: Replay['style']
   createdAt: number
+  score?: number
+  verdict?: Verdict
 }
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -52,6 +63,7 @@ type Row = {
   score: number | null
   verdict: Verdict | null
   highlight: string | null
+  scenario_id: string | null
 }
 
 function rowToReplay(row: Row): Replay {
@@ -66,6 +78,7 @@ function rowToReplay(row: Row): Replay {
     score: row.score ?? undefined,
     verdict: row.verdict ?? undefined,
     highlight: row.highlight ?? undefined,
+    scenarioId: row.scenario_id ?? undefined,
   }
 }
 
@@ -86,8 +99,8 @@ export function createReplay(input: ReplayInput): Replay {
   const isPublic = input.isPublic ? 1 : 0
   getDb()
     .prepare(
-      `INSERT INTO replays (id, them, me, dialog, style, created_at, is_public, score, verdict, highlight)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO replays (id, them, me, dialog, style, created_at, is_public, score, verdict, highlight, scenario_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
@@ -100,6 +113,7 @@ export function createReplay(input: ReplayInput): Replay {
       input.score ?? null,
       input.verdict ?? null,
       input.highlight ?? null,
+      input.scenarioId ?? null,
     )
   return {
     them: input.them,
@@ -112,13 +126,14 @@ export function createReplay(input: ReplayInput): Replay {
     score: input.score,
     verdict: input.verdict,
     highlight: input.highlight,
+    scenarioId: input.scenarioId ?? undefined,
   }
 }
 
 export function getReplay(id: string): Replay | undefined {
   const row = getDb()
     .prepare(
-      `SELECT id, them, me, dialog, style, created_at, report_count, removed, is_public, score, verdict, highlight
+      `SELECT id, them, me, dialog, style, created_at, report_count, removed, is_public, score, verdict, highlight, scenario_id
        FROM replays WHERE id = ?`,
     )
     .get(id) as Row | undefined
@@ -178,7 +193,7 @@ export function listPublicFeed(limit = 30): FeedItem[] {
   const now = Date.now()
   const rows = getDb()
     .prepare(
-      `SELECT id, them, me, style, created_at
+      `SELECT id, them, me, style, created_at, score, verdict
        FROM replays
        WHERE is_public = 1 AND removed = 0 AND created_at > ?
        ORDER BY created_at DESC
@@ -190,6 +205,8 @@ export function listPublicFeed(limit = 30): FeedItem[] {
     me: string
     style: Replay['style']
     created_at: number
+    score: number | null
+    verdict: Verdict | null
   }[]
   return rows.map((r) => ({
     id: r.id,
@@ -197,5 +214,50 @@ export function listPublicFeed(limit = 30): FeedItem[] {
     me: r.me,
     style: r.style,
     createdAt: r.created_at,
+    score: r.score ?? undefined,
+    verdict: r.verdict ?? undefined,
+  }))
+}
+
+export type ScenarioTopItem = FeedItem & { highlight?: string }
+
+// Returns top public replays for a given scenario, ordered by AI score
+// desc then recency desc. Replays without a score fall to the bottom
+// (they'll get displaced as new scored replays come in).
+export function listScenarioTop(
+  scenarioId: string,
+  limit = 10,
+): ScenarioTopItem[] {
+  const now = Date.now()
+  const rows = getDb()
+    .prepare(
+      `SELECT id, them, me, style, created_at, score, verdict, highlight
+       FROM replays
+       WHERE scenario_id = ?
+         AND is_public = 1
+         AND removed = 0
+         AND created_at > ?
+       ORDER BY score IS NULL, score DESC, created_at DESC
+       LIMIT ?`,
+    )
+    .all(scenarioId, now - TTL_MS, limit) as {
+    id: string
+    them: string
+    me: string
+    style: Replay['style']
+    created_at: number
+    score: number | null
+    verdict: Verdict | null
+    highlight: string | null
+  }[]
+  return rows.map((r) => ({
+    id: r.id,
+    them: r.them,
+    me: r.me,
+    style: r.style,
+    createdAt: r.created_at,
+    score: r.score ?? undefined,
+    verdict: r.verdict ?? undefined,
+    highlight: r.highlight ?? undefined,
   }))
 }

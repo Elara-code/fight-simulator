@@ -27,11 +27,13 @@ export function getDb(): Database.Database {
       is_public INTEGER NOT NULL DEFAULT 0,
       score INTEGER,
       verdict TEXT,
-      highlight TEXT
+      highlight TEXT,
+      scenario_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_replays_created_at ON replays(created_at);
     CREATE INDEX IF NOT EXISTS idx_replays_removed ON replays(removed);
     CREATE INDEX IF NOT EXISTS idx_replays_public ON replays(is_public, removed, created_at);
+    CREATE INDEX IF NOT EXISTS idx_replays_scenario ON replays(scenario_id, is_public, removed, score);
   `)
 
   // Idempotent migrations for installs that predate newer columns.
@@ -52,6 +54,12 @@ export function getDb(): Database.Database {
   }
   if (!existing.has('highlight')) {
     db.exec('ALTER TABLE replays ADD COLUMN highlight TEXT')
+  }
+  if (!existing.has('scenario_id')) {
+    db.exec('ALTER TABLE replays ADD COLUMN scenario_id TEXT')
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_replays_scenario ON replays(scenario_id, is_public, removed, score)',
+    )
   }
 
   dbInstance = db

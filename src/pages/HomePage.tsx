@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Bolt } from '../components/Icons'
 import { BlueMascot, RedMascot, Sparks } from '../components/Mascots'
 import GeneratingOverlay from '../components/GeneratingOverlay'
 import { ApiError, generateReply, type Relation, type StyleKey } from '../lib/api'
 import { track } from '../lib/analytics'
 import { useToast } from '../components/Toast'
+import { SCENARIOS, type Scenario } from '../lib/scenarios'
 
 const RELATIONS = [
   { key: 'couple', label: '情侣', emoji: '💖' },
@@ -21,181 +22,6 @@ const STYLES: { key: StyleKey; label: string; icon: string; desc: string }[] = [
   { key: 'calm', label: '冷静终结', icon: '🧊', desc: '不带情绪压一下' },
 ]
 
-type Scenario = {
-  id: string
-  emoji: string
-  title: string
-  text: string
-  rel: Relation
-  style: StyleKey
-}
-
-const SCENARIOS: Scenario[] = [
-  // 情侣
-  {
-    id: 'cold_reply',
-    emoji: '🧊',
-    title: '对象不回消息',
-    text: '没事别找我，有事发消息。',
-    rel: 'couple',
-    style: 'savage',
-  },
-  {
-    id: 'excuse_late',
-    emoji: '⏰',
-    title: '迟到甩锅',
-    text: '我刚在开会没听见你电话，至于吗？',
-    rel: 'couple',
-    style: 'logic',
-  },
-  {
-    id: 'hidden_phone',
-    emoji: '📱',
-    title: '藏手机被发现',
-    text: '那只是同事发的，你想多了。',
-    rel: 'couple',
-    style: 'calm',
-  },
-  {
-    id: 'always_busy',
-    emoji: '💤',
-    title: '永远说在忙',
-    text: '我最近工作太累，没空陪你，你懂事点。',
-    rel: 'couple',
-    style: 'savage',
-  },
-  {
-    id: 'past_ex',
-    emoji: '👻',
-    title: '拿你跟前任比',
-    text: '我前女友从来不会这么计较。',
-    rel: 'couple',
-    style: 'sarcasm',
-  },
-  {
-    id: 'gaslight',
-    emoji: '🌀',
-    title: '情绪被否认',
-    text: '你又在小题大做，这点事都要闹一晚。',
-    rel: 'couple',
-    style: 'logic',
-  },
-  // 朋友
-  {
-    id: 'friend_cancel',
-    emoji: '🚪',
-    title: '朋友放鸽子',
-    text: '抱歉啊，临时有点事，下次吧。',
-    rel: 'friend',
-    style: 'savage',
-  },
-  {
-    id: 'group_shade',
-    emoji: '🐍',
-    title: '群里被阴阳',
-    text: '哟，某人这打扮还挺「有个性」的哈。',
-    rel: 'friend',
-    style: 'sarcasm',
-  },
-  {
-    id: 'borrow_money',
-    emoji: '💸',
-    title: '借钱不还装死',
-    text: '最近手紧，等我发工资就还你，别老催。',
-    rel: 'friend',
-    style: 'logic',
-  },
-  {
-    id: 'stolen_idea',
-    emoji: '💡',
-    title: '想法被抢',
-    text: '我最近想到一个绝招——就是上周你说过的那个。',
-    rel: 'friend',
-    style: 'sarcasm',
-  },
-  {
-    id: 'single_push',
-    emoji: '💍',
-    title: '催你相亲',
-    text: '你这年纪还挑什么挑，差不多就行了。',
-    rel: 'friend',
-    style: 'calm',
-  },
-  // 同事
-  {
-    id: 'boss_credit',
-    emoji: '💼',
-    title: '老板抢功劳',
-    text: '这次项目做得不错，辛苦大家配合我这个方案。',
-    rel: 'work',
-    style: 'logic',
-  },
-  {
-    id: 'scope_creep',
-    emoji: '📎',
-    title: '临时加活',
-    text: '顺便帮我做一下这个，应该不难吧。',
-    rel: 'work',
-    style: 'calm',
-  },
-  {
-    id: 'blame_shift',
-    emoji: '🪃',
-    title: '同事甩锅',
-    text: '这块不是 A 负责的吗？我没跟进，你问他。',
-    rel: 'work',
-    style: 'logic',
-  },
-  {
-    id: 'weekend_call',
-    emoji: '📞',
-    title: '周末被 cue',
-    text: '有点急，周末能处理一下吗？就一点点。',
-    rel: 'work',
-    style: 'calm',
-  },
-  {
-    id: 'passive_aggressive',
-    emoji: '😬',
-    title: '被动攻击式点评',
-    text: '做得还行，就是不太够专业。',
-    rel: 'work',
-    style: 'sarcasm',
-  },
-  // 家人
-  {
-    id: 'family_marry',
-    emoji: '💒',
-    title: '亲戚逼婚',
-    text: '你再不结婚，以后没人要你。',
-    rel: 'family',
-    style: 'calm',
-  },
-  {
-    id: 'family_belittle',
-    emoji: '🙄',
-    title: '家人贬低你',
-    text: '你看看人家孩子，再看看你。',
-    rel: 'family',
-    style: 'calm',
-  },
-  {
-    id: 'money_judge',
-    emoji: '💰',
-    title: '议论你收入',
-    text: '一个月才这点，够你自己吃吗。',
-    rel: 'family',
-    style: 'logic',
-  },
-  {
-    id: 'career_doubt',
-    emoji: '🧭',
-    title: '质疑你工作',
-    text: '你那工作能当饭吃？不如考个编制。',
-    rel: 'family',
-    style: 'savage',
-  },
-]
 
 type FilterKey = 'all' | Relation
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -215,6 +41,7 @@ export default function HomePage() {
   const [text, setText] = useState(state?.seedText ?? '')
   const [rel, setRel] = useState<(typeof RELATIONS)[number]['key']>('couple')
   const [style, setStyle] = useState<StyleKey>('savage')
+  const [scenarioId, setScenarioId] = useState<string | null>(null)
   const [firing, setFiring] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [scenarioFilter, setScenarioFilter] = useState<FilterKey>('all')
@@ -242,6 +69,7 @@ export default function HomePage() {
     setText(s.text)
     setRel(s.rel)
     setStyle(s.style)
+    setScenarioId(s.id)
     track('scenario_pick', { id: s.id, rel: s.rel, style: s.style })
   }
 
@@ -271,7 +99,9 @@ export default function HomePage() {
         style,
         latency_ms: Date.now() - t0,
       })
-      nav('/result', { state: { text: trimmed, rel, reply, style } })
+      nav('/result', {
+        state: { text: trimmed, rel, reply, style, scenarioId },
+      })
     } catch (err) {
       const code = err instanceof ApiError ? err.code : 'unknown'
       track('generate_error', { code, style, relation: rel })
@@ -373,21 +203,33 @@ export default function HomePage() {
         </div>
         <div className="flex gap-2.5 overflow-x-auto no-scrollbar px-5 pb-1 snap-x snap-mandatory">
           {visibleScenarios.map((s) => (
-            <button
+            <div
               key={s.id}
-              onClick={() => onPickScenario(s)}
-              className="snap-start shrink-0 w-[148px] h-[88px] rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] active:scale-[0.97] transition text-left p-3 flex flex-col justify-between"
+              className="snap-start shrink-0 w-[148px] h-[88px] rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.07] transition relative"
             >
-              <div className="flex items-center gap-1.5">
-                <span className="text-[18px] leading-none">{s.emoji}</span>
-                <span className="text-[13px] font-heavy font-black text-white/95 truncate">
-                  {s.title}
-                </span>
-              </div>
-              <div className="text-[11px] text-muted line-clamp-2 leading-tight">
-                {s.text}
-              </div>
-            </button>
+              <button
+                onClick={() => onPickScenario(s)}
+                className="absolute inset-0 text-left p-3 pr-7 flex flex-col justify-between active:scale-[0.97] transition"
+                aria-label={`选中场景：${s.title}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[18px] leading-none">{s.emoji}</span>
+                  <span className="text-[13px] font-heavy font-black text-white/95 truncate">
+                    {s.title}
+                  </span>
+                </div>
+                <div className="text-[11px] text-muted line-clamp-2 leading-tight">
+                  {s.text}
+                </div>
+              </button>
+              <Link
+                to={`/scenarios/${s.id}`}
+                aria-label={`查看「${s.title}」的吵架排行`}
+                className="absolute top-1 right-1 w-6 h-6 grid place-items-center rounded-full text-[12px] text-white/70 active:text-white active:scale-95 hover:bg-white/10"
+              >
+                🏆
+              </Link>
+            </div>
           ))}
           {visibleScenarios.length === 0 && (
             <div className="text-[12px] text-muted py-6 px-1">
@@ -406,7 +248,11 @@ export default function HomePage() {
           <textarea
             id="fight"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value)
+              // User typed something custom — disassociate from any picked scenario.
+              if (scenarioId) setScenarioId(null)
+            }}
             rows={3}
             placeholder={'把对方说的话贴进来…\n比如：他把我当透明人'}
             className="relative w-full resize-none bg-transparent text-[15px] placeholder:text-muted/80 outline-none"

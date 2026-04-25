@@ -21,6 +21,8 @@ type EventName =
   | 'train_save'
   | 'feed_view'
   | 'feed_item_click'
+  | 'scenario_top_view'
+  | 'scenario_top_click'
   | 'web_vitals'
 
 type PostHogCapture = (event: string, props?: Record<string, unknown>) => void

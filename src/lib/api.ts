@@ -79,6 +79,7 @@ export type ReplayPayload = {
   score?: number
   verdict?: Verdict
   highlight?: string
+  scenarioId?: string | null
 }
 
 export type Replay = Omit<ReplayPayload, 'isPublic'> & {
@@ -92,6 +93,12 @@ export type FeedItem = {
   me: string
   style: StyleKey
   createdAt: number
+  score?: number
+  verdict?: Verdict
+}
+
+export type ScenarioTopItem = FeedItem & {
+  highlight?: string
 }
 
 export async function listFeed(): Promise<FeedItem[]> {
@@ -102,6 +109,21 @@ export async function listFeed(): Promise<FeedItem[]> {
     throw new ApiError(res.status, code, mapCodeToMessage(code, res.status))
   }
   const body = (await res.json()) as { items: FeedItem[] }
+  return body.items
+}
+
+export async function listScenarioTop(
+  scenarioId: string,
+): Promise<ScenarioTopItem[]> {
+  const res = await fetch(
+    `/api/scenarios/${encodeURIComponent(scenarioId)}/top`,
+  )
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({}))
+    const code = typeof payload.error === 'string' ? payload.error : `http_${res.status}`
+    throw new ApiError(res.status, code, mapCodeToMessage(code, res.status))
+  }
+  const body = (await res.json()) as { items: ScenarioTopItem[] }
   return body.items
 }
 

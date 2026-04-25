@@ -40,6 +40,7 @@ type ShareState = {
   score?: number
   verdict?: Verdict
   highlight?: string
+  scenarioId?: string | null
 }
 
 export default function SharePage() {
@@ -69,6 +70,7 @@ export default function SharePage() {
   const score = state?.score
   const verdict = state?.verdict
   const highlight = state?.highlight
+  const scenarioId = state?.scenarioId ?? null
   const hasScore = typeof score === 'number' && !!verdict
 
   const [shown, setShown] = useState(0)
@@ -124,6 +126,7 @@ export default function SharePage() {
       score,
       verdict,
       highlight,
+      scenarioId,
     })
       .then((r) => {
         const url = `${origin}${r.url}`
