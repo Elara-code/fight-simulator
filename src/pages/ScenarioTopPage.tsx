@@ -16,6 +16,7 @@ const STYLE_CHIP: Record<StyleKey, { icon: string; label: string }> = {
   logic: { icon: '🔥', label: '逻辑碾压' },
   sarcasm: { icon: '😏', label: '阴阳怪气' },
   calm: { icon: '🧊', label: '冷静终结' },
+  classic: { icon: '📜', label: '腹有诗书' },
 }
 
 const VERDICT_COLORS: Record<Verdict, { from: string; to: string }> = {

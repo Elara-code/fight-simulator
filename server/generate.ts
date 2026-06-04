@@ -3,7 +3,7 @@ import { buildDeepSeekClient, getDeepSeekModel } from './deepseek.js'
 import { log } from './logger.js'
 import { screenModelOutput } from './safety.js'
 
-export const StyleKey = z.enum(['savage', 'logic', 'sarcasm', 'calm'])
+export const StyleKey = z.enum(['savage', 'logic', 'sarcasm', 'calm', 'classic'])
 export type StyleKey = z.infer<typeof StyleKey>
 
 export const Relation = z.enum(['couple', 'friend', 'work', 'family'])
@@ -47,6 +47,8 @@ const STYLE_DESC: Record<StyleKey, string> = {
   logic: '逻辑碾压：条理清晰，摆事实、指出对方的自相矛盾，但仍然带情绪。',
   sarcasm: '阴阳怪气：表面客气、暗藏嘲讽，大量反问和夸张比喻，杀人诛心。',
   calm: '冷静终结：不吵回去，点出问题+给出要求，留尊严也留底线。',
+  classic:
+    '腹有诗书：引一句真实存在的古诗词/文言/历史典故/中外名人名言（必须是真的，不准杜撰），再用一句白话戳到对方痛处。整体优雅压制，不带脏字。引语和回击要扣题，不能掉书袋。',
 }
 
 const RELATION_DESC: Record<Relation, string> = {
@@ -76,6 +78,13 @@ const SYSTEM_PROMPT = `你是「吵架模拟器」的反击生成器。用户贴
 - logic ${STYLE_DESC.logic}
 - sarcasm ${STYLE_DESC.sarcasm}
 - calm ${STYLE_DESC.calm}
+- classic ${STYLE_DESC.classic}
+
+【classic 风格的特别要求（只在 style=classic 时生效）】
+- me 字段必须包含一句真实的引文（古诗/词/文言/史书/谚语/中外名人名言皆可），引文用「」或《》标出来源或作者；引文必须是真实可查的，宁可挑常见的也不要编造。
+- 引文之后用 1-2 行白话扣回当下情境，让引文的锋芒落到对方头上。不要纯抒情。
+- dialog 里的回击同样要"文气+刀气"并存，可继续引经据典，也可白话延伸，但保持典雅。
+- 不要文白夹杂得读不顺；不要堆砌四字成语；不要"之乎者也"凑数。
 
 【关系说明】
 - couple ${RELATION_DESC.couple}

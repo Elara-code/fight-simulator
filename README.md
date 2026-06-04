@@ -25,6 +25,16 @@ screenshots — all for fun, expression, and the perfect response.
 
 Fonts: 标题 Noto Sans SC Heavy · 正文 Noto Sans SC Medium · 数字 Inter SemiBold.
 
+## Reply styles
+
+| key       | label      | 描述                       |
+| --------- | ---------- | -------------------------- |
+| `savage`  | 爽文反击   | 直球硬刚                   |
+| `logic`   | 逻辑碾压   | 讲道理到对方哑口无言       |
+| `sarcasm` | 阴阳怪气   | 拐弯抹角扎你               |
+| `calm`    | 冷静终结   | 不带情绪压一下             |
+| `classic` | 腹有诗书   | 引经据典 · 优雅压制        |
+
 ## Pages
 
 - `/` — 首页 / 输入页（Home / Input）

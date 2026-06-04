@@ -8,6 +8,7 @@ import {
   replayCount,
   ReplayInput,
   reportReplay,
+  scorePercentile,
 } from './replays'
 
 describe('replay store', () => {
@@ -216,5 +217,49 @@ describe('replay store', () => {
     })
     const feed = listPublicFeed()
     expect(feed.map((f) => f.id)).toEqual([b.id, a.id])
+  })
+
+  describe('scorePercentile', () => {
+    function seed(scores: number[]) {
+      for (const s of scores) {
+        createReplay({
+          them: 't',
+          me: 'm',
+          dialog: [{ them: 'a', me: 'b' }],
+          style: 'savage',
+          score: s,
+          verdict: '完胜',
+        })
+      }
+    }
+
+    it('returns null when the sample is too small to anchor on', () => {
+      seed([60, 70, 80])
+      expect(scorePercentile(75)).toBeNull()
+    })
+
+    it('returns a percentile and sample size once we have enough data', () => {
+      const scores = Array.from({ length: 25 }, (_, i) => i * 4) // 0..96
+      seed(scores)
+      const r = scorePercentile(60)
+      expect(r).not.toBeNull()
+      expect(r!.sample).toBe(25)
+      // 15 of 25 are < 60 → 60%
+      expect(r!.percentile).toBe(60)
+    })
+
+    it('ignores removed and unscored replays', () => {
+      const scores = Array.from({ length: 30 }, (_, i) => 50 + i) // 50..79
+      seed(scores)
+      // One unscored replay shouldn't count toward total
+      createReplay({
+        them: 'x',
+        me: 'y',
+        dialog: [{ them: 'a', me: 'b' }],
+        style: 'savage',
+      })
+      const r = scorePercentile(70)
+      expect(r!.sample).toBe(30)
+    })
   })
 })

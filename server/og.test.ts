@@ -46,8 +46,8 @@ describe('og html renderer', () => {
   })
 
   it('maps each style to its Chinese label', () => {
-    const styles = ['savage', 'logic', 'sarcasm', 'calm'] as const
-    const labels = ['爽文反击', '逻辑碾压', '阴阳怪气', '冷静终结']
+    const styles = ['savage', 'logic', 'sarcasm', 'calm', 'classic'] as const
+    const labels = ['爽文反击', '逻辑碾压', '阴阳怪气', '冷静终结', '腹有诗书']
     styles.forEach((s, i) => {
       const html = renderReplayHtml({ ...baseReplay, style: s }, 'https://e.x')
       expect(html).toContain(labels[i])

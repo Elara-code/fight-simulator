@@ -7,6 +7,7 @@ import { ApiError, generateReply, type Relation, type StyleKey } from '../lib/ap
 import { track } from '../lib/analytics'
 import { useToast } from '../components/Toast'
 import { SCENARIOS, type Scenario } from '../lib/scenarios'
+import { getStylePref, setStylePref } from '../lib/prefs'
 
 const RELATIONS = [
   { key: 'couple', label: '情侣', emoji: '💖' },
@@ -20,6 +21,7 @@ const STYLES: { key: StyleKey; label: string; icon: string; desc: string }[] = [
   { key: 'logic', label: '逻辑碾压', icon: '🔥', desc: '讲道理到你服' },
   { key: 'sarcasm', label: '阴阳怪气', icon: '😏', desc: '拐弯抹角扎你' },
   { key: 'calm', label: '冷静终结', icon: '🧊', desc: '不带情绪压一下' },
+  { key: 'classic', label: '腹有诗书', icon: '📜', desc: '引经据典 优雅压制' },
 ]
 
 
@@ -40,7 +42,9 @@ export default function HomePage() {
   const toast = useToast()
   const [text, setText] = useState(state?.seedText ?? '')
   const [rel, setRel] = useState<(typeof RELATIONS)[number]['key']>('couple')
-  const [style, setStyle] = useState<StyleKey>('savage')
+  // Remember the last style the user chose so power users don't have to
+  // re-pick on every visit. First-time visitors still get 'savage'.
+  const [style, setStyle] = useState<StyleKey>(() => getStylePref() ?? 'savage')
   const [scenarioId, setScenarioId] = useState<string | null>(null)
   const [firing, setFiring] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -286,21 +290,24 @@ export default function HomePage() {
               {STYLES.find((s) => s.key === style)?.desc}
             </span>
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             {STYLES.map((s) => {
               const on = s.key === style
               return (
                 <button
                   key={s.key}
-                  onClick={() => setStyle(s.key)}
-                  className={`h-[62px] rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${
+                  onClick={() => {
+                    setStyle(s.key)
+                    setStylePref(s.key)
+                  }}
+                  className={`h-[62px] rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all px-1 ${
                     on
                       ? 'border-transparent bg-cta-gradient text-white shadow-glowOrange scale-[1.02]'
                       : 'border-white/10 bg-white/5 text-white/80 hover:text-white'
                   }`}
                 >
-                  <span className="text-[18px] leading-none">{s.icon}</span>
-                  <span className="text-[11.5px] font-heavy font-black">
+                  <span className="text-[17px] leading-none">{s.icon}</span>
+                  <span className="text-[10.5px] font-heavy font-black whitespace-nowrap">
                     {s.label}
                   </span>
                 </button>

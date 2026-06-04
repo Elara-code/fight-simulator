@@ -27,6 +27,7 @@ const STYLE_LABEL: Record<Replay['style'], string> = {
   logic: '逻辑碾压',
   sarcasm: '阴阳怪气',
   calm: '冷静终结',
+  classic: '腹有诗书',
 }
 
 function escapeHtml(s: string): string {

@@ -182,6 +182,29 @@ export function adminRemoveReplay(id: string): boolean {
   return info.changes > 0
 }
 
+// Where this score sits among all scored, non-removed replays in the last
+// TTL window. Returns null when there's too little data to anchor on so the
+// client can hide the badge instead of showing a misleading "击败 100%" on
+// an empty table.
+export function scorePercentile(
+  score: number,
+): { percentile: number; sample: number } | null {
+  const now = Date.now()
+  const row = getDb()
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM replays
+          WHERE removed = 0 AND score IS NOT NULL AND created_at > ?
+            AND score < ?) AS below,
+         (SELECT COUNT(*) FROM replays
+          WHERE removed = 0 AND score IS NOT NULL AND created_at > ?) AS total`,
+    )
+    .get(now - TTL_MS, score, now - TTL_MS) as { below: number; total: number }
+  if (!row || row.total < 20) return null
+  const percentile = Math.round((row.below / row.total) * 100)
+  return { percentile, sample: row.total }
+}
+
 export function replayCount(): number {
   const row = getDb()
     .prepare('SELECT COUNT(*) AS n FROM replays WHERE removed = 0')

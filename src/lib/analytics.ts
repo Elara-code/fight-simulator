@@ -24,6 +24,7 @@ type EventName =
   | 'scenario_top_view'
   | 'scenario_top_click'
   | 'challenge_create'
+  | 'challenge_create_from_result'
   | 'challenge_share'
   | 'challenge_view'
   | 'challenge_accept'

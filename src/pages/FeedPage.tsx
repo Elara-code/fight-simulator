@@ -9,6 +9,7 @@ const STYLE_CHIP: Record<StyleKey, { label: string; tone: string }> = {
   logic: { label: '🔥 逻辑碾压', tone: 'from-orange-500/30 to-amber-500/30 text-white' },
   sarcasm: { label: '😏 阴阳怪气', tone: 'from-purple-500/30 to-pink-500/30 text-white' },
   calm: { label: '🧊 冷静终结', tone: 'from-sky-500/30 to-blue-500/30 text-white' },
+  classic: { label: '📜 腹有诗书', tone: 'from-amber-700/30 to-purple-500/30 text-white' },
 }
 
 function relativeTime(ts: number) {
