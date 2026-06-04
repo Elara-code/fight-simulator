@@ -1,0 +1,52 @@
+[
+  {
+    "id": "couple_cold_reply",
+    "relation": "couple",
+    "text": "没事别找我，有事发消息。"
+  },
+  {
+    "id": "couple_past_ex",
+    "relation": "couple",
+    "text": "我前女友从来不会这么计较。"
+  },
+  {
+    "id": "couple_gaslight",
+    "relation": "couple",
+    "text": "你又在小题大做，这点事都要闹一晚。"
+  },
+  {
+    "id": "family_marry",
+    "relation": "family",
+    "text": "你再不结婚，以后没人要你。"
+  },
+  {
+    "id": "family_belittle",
+    "relation": "family",
+    "text": "你看看人家孩子，再看看你。"
+  },
+  {
+    "id": "family_career_doubt",
+    "relation": "family",
+    "text": "你那工作能当饭吃？不如考个编制。"
+  },
+  {
+    "id": "work_boss_credit",
+    "relation": "work",
+    "text": "这次项目做得不错，辛苦大家配合我这个方案。"
+  },
+  {
+    "id": "work_passive_aggressive",
+    "relation": "work",
+    "text": "做得还行，就是不太够专业。"
+  },
+  {
+    "id": "friend_borrow_money",
+    "relation": "friend",
+    "text": "最近手紧，等我发工资就还你，别老催。"
+  },
+  {
+    "id": "friend_group_shade",
+    "relation": "friend",
+    "text": "哟，某人这打扮还挺「有个性」的哈。"
+  }
+]

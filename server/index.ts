@@ -29,6 +29,7 @@ import {
   listPublicFeed,
   listScenarioTop,
   reportReplay,
+  scorePercentile,
 } from './replays.js'
 import {
   ChallengeCompleteInput,
@@ -255,6 +256,18 @@ app.post('/api/replays', replayWriteLimiter, (req, res) => {
 app.get('/api/replays/top', (_req, res) => {
   const feed = listPublicFeed(30)
   res.json({ items: feed })
+})
+
+app.get('/api/replays/percentile', (req, res) => {
+  const raw = req.query.score
+  const score = typeof raw === 'string' ? Number(raw) : NaN
+  if (!Number.isInteger(score) || score < 0 || score > 100) {
+    return res.status(400).json({ error: 'bad_request' })
+  }
+  const result = scorePercentile(score)
+  res.set('Cache-Control', 'public, max-age=30')
+  if (!result) return res.json({ percentile: null, sample: 0 })
+  res.json(result)
 })
 
 app.get('/api/scenarios/:id/top', (req, res) => {

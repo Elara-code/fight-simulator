@@ -9,6 +9,7 @@ import { track } from '../lib/analytics'
 import {
   ApiError,
   createReplay,
+  getScorePercentile,
   type StyleKey,
   type Verdict,
 } from '../lib/api'
@@ -81,11 +82,29 @@ export default function SharePage() {
   const [replayUrl, setReplayUrl] = useState<string>('')
   const [wantsPublic, setWantsPublic] = useState(false)
   const [meAvatar, setMeAvatar] = useState<string | null>(() => getUserAvatar())
+  const [percentile, setPercentile] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const replayPromiseRef = useRef<Promise<string | null> | null>(null)
 
   useEffect(() => onUserAvatarChange(setMeAvatar), [])
+
+  // Pull percentile once we have a score. Hidden if the server says
+  // sample size is too small to anchor on.
+  useEffect(() => {
+    if (typeof score !== 'number') return
+    let cancelled = false
+    getScorePercentile(score)
+      .then((r) => {
+        if (!cancelled) setPercentile(r.percentile)
+      })
+      .catch(() => {
+        if (!cancelled) setPercentile(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [score])
 
   const onPickAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -175,6 +194,12 @@ export default function SharePage() {
     track('share_click', { target: 'save' })
     setBusy('save')
     try {
+      // Bake the real replay short id into the screenshot. Doing this in
+      // onSave (not on mount) keeps server load proportional to actual
+      // share intent.
+      await ensureReplayUrl()
+      // Give React one paint to flush the id into the serial slot.
+      await new Promise((r) => requestAnimationFrame(r))
       const dataUrl = await toPng(canvasRef.current, renderOptions)
       const a = document.createElement('a')
       a.href = dataUrl
@@ -298,8 +323,8 @@ export default function SharePage() {
           ref={canvasRef}
           className="relative rounded-[22px] bg-[#ECECEC] p-4 shadow-card overflow-hidden"
         >
-          <div className="absolute top-2 right-3 text-[10px] text-black/20 tracking-widest font-num">
-            299599
+          <div className="absolute top-2 right-3 text-[10px] text-black/25 tracking-widest font-num">
+            {replayUrl ? `#${replayUrl.split('/').pop()}` : '战绩编号待定'}
           </div>
 
           {dinged && hasScore && (
@@ -313,7 +338,39 @@ export default function SharePage() {
             </div>
           )}
 
-          <div className="pt-6 space-y-3 min-h-[320px]">
+          {/* Poster headline — the highlight 金句 is the most shareable
+              artifact of a fight, so we give it album-cover real estate
+              right above the chat. Hidden when there's no highlight (older
+              replays, demo state). */}
+          {highlight && (
+            <div className="pt-5 pb-3 px-1">
+              <div className="text-[10px] tracking-[0.25em] text-black/40 text-center">
+                AI 认为最狠的一句
+              </div>
+              <blockquote className="mt-2 text-center font-heavy font-black text-black leading-[1.25] text-[19px] px-2">
+                <span className="text-primary text-[22px] align-top mr-0.5">
+                  “
+                </span>
+                {highlight}
+                <span className="text-primary text-[22px] align-top ml-0.5">
+                  ”
+                </span>
+              </blockquote>
+              <div
+                className="mx-auto mt-2 h-[2px] w-12 rounded-full"
+                style={{
+                  background:
+                    verdict && VERDICT_COLORS[verdict]
+                      ? `linear-gradient(90deg, ${VERDICT_COLORS[verdict].from}, ${VERDICT_COLORS[verdict].to})`
+                      : 'linear-gradient(90deg, #FF3B4D, #FF7A45)',
+                }}
+              />
+            </div>
+          )}
+
+          <div
+            className={`${highlight ? 'pt-2' : 'pt-6'} space-y-3 min-h-[320px]`}
+          >
             {lines.slice(0, shown).map((l, i) => (
               <div
                 key={i}
@@ -327,19 +384,24 @@ export default function SharePage() {
               <Row side={lines[shown].side} text="…" typing meAvatar={meAvatar} />
             )}
             <div className="mt-4 pt-3 border-t border-black/10 flex items-center justify-between gap-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <div className="text-[11px] text-black/50 tracking-wide">
                   来自「吵架模拟器」
                 </div>
                 <div className="text-[10px] text-black/40 mt-0.5">
                   扫码你也来吵一架
                 </div>
+                {replayUrl && (
+                  <div className="text-[9.5px] text-black/55 mt-1 font-num tracking-tight truncate">
+                    {replayUrl.replace(/^https?:\/\//, '')}
+                  </div>
+                )}
               </div>
               {qrDataUrl && (
                 <img
                   src={qrDataUrl}
                   alt="二维码"
-                  className="w-11 h-11 rounded-md"
+                  className="w-11 h-11 rounded-md shrink-0"
                 />
               )}
             </div>
@@ -357,6 +419,11 @@ export default function SharePage() {
                   </span>
                   <span className="text-[13px] text-muted">/ 100</span>
                 </div>
+                {percentile != null && (
+                  <div className="mt-1 text-[11px] text-accent font-heavy font-black">
+                    击败 {percentile}% 的人
+                  </div>
+                )}
               </div>
               <Badge
                 label={verdict!}

@@ -28,6 +28,7 @@ export const zh = {
     logic: { label: '逻辑碾压', desc: '讲道理到你服' },
     sarcasm: { label: '阴阳怪气', desc: '拐弯抹角扎你' },
     calm: { label: '冷静终结', desc: '不带情绪压一下' },
+    classic: { label: '腹有诗书', desc: '引经据典 优雅压制' },
   },
   result: {
     title: '吵架结果',

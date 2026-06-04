@@ -1,4 +1,4 @@
-export type StyleKey = 'savage' | 'logic' | 'sarcasm' | 'calm'
+export type StyleKey = 'savage' | 'logic' | 'sarcasm' | 'calm' | 'classic'
 export type Relation = 'couple' | 'friend' | 'work' | 'family'
 export type GenerateHint = 'harder' | 'softer' | 'different'
 export type Verdict = '碾压' | '完胜' | '险胜' | '打平' | '失利'
@@ -99,6 +99,16 @@ export type FeedItem = {
 
 export type ScenarioTopItem = FeedItem & {
   highlight?: string
+}
+
+export type ScorePercentile = { percentile: number | null; sample: number }
+
+export async function getScorePercentile(score: number): Promise<ScorePercentile> {
+  const res = await fetch(`/api/replays/percentile?score=${score}`)
+  if (!res.ok) {
+    return { percentile: null, sample: 0 }
+  }
+  return (await res.json()) as ScorePercentile
 }
 
 export async function listFeed(): Promise<FeedItem[]> {

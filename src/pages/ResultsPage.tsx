@@ -5,11 +5,15 @@ import ChatBubble from '../components/ChatBubble'
 import { useToast } from '../components/Toast'
 import {
   ApiError,
+  createChallenge,
   generateReply,
+  getScorePercentile,
   type GenerateHint,
   type Relation,
   type Reply,
   type StyleKey,
+  type TrainVerdict,
+  type Verdict,
 } from '../lib/api'
 import { track } from '../lib/analytics'
 import {
@@ -19,13 +23,25 @@ import {
   upsertEntry,
   type HistoryEntry,
 } from '../lib/history'
+import { setHintPref, setStylePref } from '../lib/prefs'
 
 const STYLES: { key: StyleKey; label: string; icon: string }[] = [
   { key: 'savage', label: '爽文反击', icon: '⚡' },
   { key: 'logic', label: '逻辑碾压', icon: '🔥' },
   { key: 'sarcasm', label: '阴阳怪气', icon: '😏' },
   { key: 'calm', label: '冷静终结', icon: '🧊' },
+  { key: 'classic', label: '腹有诗书', icon: '📜' },
 ]
+
+// Maps the 5-tier 中文 verdict (which the AI generates) down to the 3-tier
+// win/draw/lose that the challenge endpoint stores. The challenge flow is
+// asymmetric — the friend sees "this person beat the game with score X" so
+// 险胜 still counts as a win for them to chase.
+function toTrainVerdict(v: Verdict | undefined): TrainVerdict {
+  if (v === '碾压' || v === '完胜' || v === '险胜') return 'win'
+  if (v === '失利') return 'lose'
+  return 'draw'
+}
 
 const FALLBACK: Record<StyleKey, Reply> = {
   savage: {
@@ -55,6 +71,15 @@ const FALLBACK: Record<StyleKey, Reply> = {
   calm: {
     me: '我理解你最近忙，但忽视是有代价的。\n我们可以聊聊怎么改善。',
     dialog: [{ them: '好，我们谈谈。', me: '谢谢。先听你说。' }],
+  },
+  classic: {
+    me: '《论语》有云：「己所不欲，勿施于人。」\n你受不了被忽视，又为何把同样的冷漠递给我？',
+    dialog: [
+      {
+        them: '少拿大道理压我。',
+        me: '不是道理压你，是事实压你。\n苏轼说过：「不识庐山真面目，只缘身在此山中。」',
+      },
+    ],
   },
 }
 
@@ -109,6 +134,10 @@ export default function ResultsPage() {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState<null | 'one' | 'all'>(null)
   const [error, setError] = useState<string | null>(null)
+  const [percentile, setPercentile] = useState<number | null>(null)
+  const [challengeState, setChallengeState] = useState<
+    { status: 'idle' } | { status: 'creating' } | { status: 'created'; url: string }
+  >({ status: 'idle' })
 
   const persistEntry = (patch: Partial<Record<StyleKey, Reply>>) => {
     if (isDemo) return
@@ -193,6 +222,27 @@ export default function ResultsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [style])
 
+  // Fetch the percentile each time the score changes so users see "击败 X%"
+  // alongside the verdict. Hidden in demo mode (no real score) and when the
+  // server tells us the sample is too small to anchor on.
+  useEffect(() => {
+    if (isDemo || typeof reply.score !== 'number') {
+      setPercentile(null)
+      return
+    }
+    let cancelled = false
+    getScorePercentile(reply.score)
+      .then((r) => {
+        if (!cancelled) setPercentile(r.percentile)
+      })
+      .catch(() => {
+        if (!cancelled) setPercentile(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [reply.score, isDemo])
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text)
@@ -231,8 +281,51 @@ export default function ResultsPage() {
 
   const onRegenerate = (hint?: GenerateHint) => {
     track('regenerate', { style, hint })
+    if (hint) setHintPref(hint)
     delete cacheRef.current[style]
     fetchStyle(style, { force: true, hint })
+  }
+
+  const onChallengeFriend = async () => {
+    if (challengeState.status === 'creating') return
+    if (typeof reply.score !== 'number' || !reply.verdict) {
+      toast.show('这条战绩还没拿到 AI 评分，没法发起挑战', 'info')
+      return
+    }
+    setChallengeState({ status: 'creating' })
+    track('challenge_create_from_result', { score: reply.score, style })
+    try {
+      const created = await createChallenge({
+        opening: themMsg,
+        relation,
+        challengerScore: reply.score,
+        challengerVerdict: toTrainVerdict(reply.verdict),
+      })
+      const url = `${window.location.origin}/challenge/${created.id}`
+      setChallengeState({ status: 'created', url })
+      const text = `我用 AI 吵了一句拿了 ${reply.score} 分（${reply.verdict}）。你来挑战看看？`
+      if (typeof navigator.share === 'function') {
+        try {
+          await navigator.share({ title: '吵架模拟器 · 挑战', text, url })
+          track('challenge_share', { method: 'native', from: 'result' })
+          return
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') return
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(`${text}\n${url}`)
+        toast.show('挑战链接已复制，发给朋友吧', 'success')
+        track('challenge_share', { method: 'clipboard', from: 'result' })
+      } catch {
+        toast.show('链接已生成，请长按下方链接复制', 'info')
+      }
+    } catch (err) {
+      setChallengeState({ status: 'idle' })
+      const message =
+        err instanceof ApiError ? err.message : '生成挑战链接失败，请重试'
+      toast.show(message, 'error')
+    }
   }
 
   const HINT_CHIPS: { hint: GenerateHint; icon: string; label: string }[] = [
@@ -244,6 +337,7 @@ export default function ResultsPage() {
   const onStyleSwitch = (next: StyleKey) => {
     if (next === style) return
     track('style_switch', { from: style, to: next })
+    setStylePref(next)
     setStyle(next)
   }
 
@@ -394,6 +488,61 @@ export default function ResultsPage() {
             </ChatBubble>
           </div>
         ))}
+
+        {/* AI 评分 + 击败 X% 锚点 + 叫朋友挑战 CTA. Demo mode and replies
+            from older history entries without scores hide this block. */}
+        {!isDemo && typeof reply.score === 'number' && reply.verdict && (
+          <div
+            style={{ animationDelay: `${260 + reply.dialog.length * 180 + 80}ms` }}
+            className="animate-cardBoom rounded-2xl border border-white/10 bg-white/[0.04] p-3 mt-2"
+          >
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-cta-gradient text-white font-heavy font-black w-14 h-14 grid place-items-center shadow-glow">
+                <div className="text-center leading-none">
+                  <div className="text-[20px] font-num">{reply.score}</div>
+                  <div className="text-[9px] opacity-80 mt-0.5">/100</div>
+                </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-heavy font-black text-[15px]">
+                    {reply.verdict}
+                  </span>
+                  {percentile != null && (
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-accent/15 text-accent font-heavy font-black">
+                      击败 {percentile}% 的人
+                    </span>
+                  )}
+                </div>
+                {reply.highlight && (
+                  <div className="text-[12px] text-white/70 leading-snug mt-1 line-clamp-2">
+                    最狠一句：「{reply.highlight}」
+                  </div>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onChallengeFriend}
+              disabled={challengeState.status === 'creating'}
+              className="mt-3 w-full h-11 rounded-xl bg-share-gradient text-white font-heavy font-black text-[13px] flex items-center justify-center gap-2 shadow-glowAi active:scale-95 disabled:opacity-60"
+            >
+              <Share className="w-4 h-4" />
+              {challengeState.status === 'creating'
+                ? '生成挑战链接中…'
+                : challengeState.status === 'created'
+                  ? '再分享一次'
+                  : '叫朋友来吵这道题'}
+            </button>
+            {challengeState.status === 'created' && (
+              <div className="mt-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 flex items-center gap-2">
+                <Copy className="w-3.5 h-3.5 text-muted shrink-0" />
+                <span className="text-[11.5px] text-white/70 truncate flex-1">
+                  {challengeState.url}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Loading overlay: hovers above the faded previous conversation so
