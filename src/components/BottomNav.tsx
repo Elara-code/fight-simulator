@@ -19,13 +19,13 @@ export default function BottomNav() {
             <span>对吵</span>
           </NavLink>
           <button
-            aria-label="新建"
-            onClick={() => nav('/')}
+            aria-label="快速吵一句"
+            onClick={() => nav('/quick')}
             className="relative -mt-6 mx-auto h-12 w-12 rounded-full bg-cta-gradient text-white grid place-items-center shadow-glow active:scale-95 transition"
           >
             <Plus className="w-6 h-6" />
           </button>
-          <NavLink to="/share" className={({ isActive }) => `${tab} ${isActive ? active : ''}`}>
+          <NavLink to="/history" className={({ isActive }) => `${tab} ${isActive ? active : ''}`}>
             <History className="w-5 h-5" />
             <span>历史</span>
           </NavLink>

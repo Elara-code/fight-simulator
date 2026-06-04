@@ -3,11 +3,11 @@ dist
 dist-ssr
 .vite
 *.tsbuildinfo
-.DS_Store
-*.local
+.git
+.github
 .env
-.env.local
-.env.*.local
+.env.*
+*.local
 .vscode
 .idea
 data/
@@ -15,4 +15,6 @@ data/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
-scripts/audit-out/
+coverage
+.DS_Store
+README.md

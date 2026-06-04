@@ -10,11 +10,12 @@ html,
 body,
 #root {
   height: 100%;
-  background: #0b0f14;
+  background: #0f1115;
   color: #fff;
   font-family: 'Noto Sans SC', Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  letter-spacing: -0.01em;
 }
 
 @layer utilities {
@@ -26,14 +27,15 @@ body,
   .bg-radial-spot {
     background: radial-gradient(
         1200px 600px at 20% -10%,
-        rgba(255, 77, 109, 0.25),
+        rgba(255, 59, 77, 0.28),
         transparent 60%
       ),
-      radial-gradient(900px 500px at 110% 10%, rgba(0, 229, 255, 0.18), transparent 55%),
-      radial-gradient(700px 500px at 50% 120%, rgba(168, 85, 247, 0.18), transparent 60%);
+      radial-gradient(900px 500px at 110% 10%, rgba(59, 130, 246, 0.22), transparent 55%),
+      radial-gradient(700px 500px at 50% 120%, rgba(139, 92, 246, 0.22), transparent 60%);
   }
-  .text-stroke {
-    -webkit-text-stroke: 2px #0b0f14;
+  .title-skew {
+    display: inline-block;
+    transform: skewX(-3deg);
   }
   .safe-bottom {
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
@@ -43,5 +45,29 @@ body,
   }
   .no-scrollbar {
     scrollbar-width: none;
+  }
+  /* 斜向闪电扫光，用在 CTA 上 */
+  .btn-sweep {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .btn-sweep::after {
+    content: '';
+    position: absolute;
+    inset: -40% -20%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.45) 45%,
+      rgba(255, 255, 255, 0.85) 50%,
+      rgba(255, 255, 255, 0.45) 55%,
+      transparent 100%
+    );
+    transform: translateX(-120%) skewX(-20deg);
+    pointer-events: none;
+  }
+  .btn-sweep.is-firing::after {
+    animation: boltSweep 520ms ease-out;
   }
 }

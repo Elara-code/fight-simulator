@@ -1,0 +1,111 @@
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+import Database from 'better-sqlite3'
+
+let dbInstance: Database.Database | null = null
+
+export function getDb(): Database.Database {
+  if (dbInstance) return dbInstance
+  const path = process.env.DATABASE_PATH || './data/fightsim.sqlite'
+  if (path !== ':memory:') {
+    mkdirSync(dirname(path), { recursive: true })
+  }
+  const db = new Database(path)
+  db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
+
+  // Initial schema: only declares indexes on columns that have always
+  // existed (created_at, removed). Indexes on columns added by ALTER
+  // TABLE migrations below are created AFTER the migrations run, so
+  // legacy DBs don't crash trying to index a column that doesn't exist
+  // yet (regression: github issue #11).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS replays (
+      id TEXT PRIMARY KEY,
+      them TEXT NOT NULL,
+      me TEXT NOT NULL,
+      dialog TEXT NOT NULL,
+      style TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      report_count INTEGER NOT NULL DEFAULT 0,
+      removed INTEGER NOT NULL DEFAULT 0,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      score INTEGER,
+      verdict TEXT,
+      highlight TEXT,
+      scenario_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_replays_created_at ON replays(created_at);
+    CREATE INDEX IF NOT EXISTS idx_replays_removed ON replays(removed);
+  `)
+
+  // Idempotent migrations for installs that predate newer columns.
+  const cols = db
+    .prepare('PRAGMA table_info(replays)')
+    .all() as { name: string }[]
+  const existing = new Set(cols.map((c) => c.name))
+  if (!existing.has('is_public')) {
+    db.exec(
+      'ALTER TABLE replays ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0',
+    )
+  }
+  if (!existing.has('score')) {
+    db.exec('ALTER TABLE replays ADD COLUMN score INTEGER')
+  }
+  if (!existing.has('verdict')) {
+    db.exec('ALTER TABLE replays ADD COLUMN verdict TEXT')
+  }
+  if (!existing.has('highlight')) {
+    db.exec('ALTER TABLE replays ADD COLUMN highlight TEXT')
+  }
+  if (!existing.has('scenario_id')) {
+    db.exec('ALTER TABLE replays ADD COLUMN scenario_id TEXT')
+  }
+
+  // Indexes on migration-added columns. Run after the column migrations
+  // so they always succeed regardless of starting schema version.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_replays_public ON replays(is_public, removed, created_at);
+    CREATE INDEX IF NOT EXISTS idx_replays_scenario ON replays(scenario_id, is_public, removed, score);
+  `)
+
+  // Challenge invites — used by the friend-help-fight flow. Same 7-day
+  // TTL as replays; opponent_* columns stay null until the friend
+  // completes their attempt.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS challenges (
+      id TEXT PRIMARY KEY,
+      opening TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      challenger_score INTEGER NOT NULL,
+      challenger_verdict TEXT NOT NULL,
+      challenger_name TEXT,
+      opponent_score INTEGER,
+      opponent_verdict TEXT,
+      opponent_name TEXT,
+      opponent_completed_at INTEGER,
+      created_at INTEGER NOT NULL,
+      removed INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_challenges_created_at ON challenges(created_at);
+  `)
+
+  dbInstance = db
+  return db
+}
+
+// For tests — reset module-level cache so fresh DBs can be opened per test.
+export function resetDbForTests() {
+  if (dbInstance) {
+    dbInstance.close()
+    dbInstance = null
+  }
+}
+
+// Called during graceful shutdown. Safe to call even if db was never opened.
+export function closeDb() {
+  if (dbInstance) {
+    dbInstance.close()
+    dbInstance = null
+  }
+}
